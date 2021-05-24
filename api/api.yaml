@@ -1,0 +1,151 @@
+openapi: 3.0.3
+info:
+  title: Ticketing Server
+  description: Ticketing Server
+  version: 1.0.0
+paths:
+  /lineages:
+    post:
+      operationId: createLineage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LineageCreationRequest"
+      responses:
+        '200':
+          description: Lineage created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LineageCreationResponse"
+
+  /lineages/{lineageId}/tickets:
+    post:
+      operationId: leaseTicket
+      parameters:
+        - name: lineageId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TicketLeaseRequest"
+      responses:
+        '200':
+          description: Ticket lease acquired
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TicketLeaseResponse"
+
+  /lineages/{lineageId}/tickets/{ticketExtId}:
+    get:
+      operationId: getTicket
+      parameters:
+        - name: lineageId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: ticketExtId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The ticket has an active or closed lease which is returned to the client.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TicketLeaseResponse"
+        '404':
+          description: The ticket with the given extId does not have an active or closed lease.
+    patch:
+      operationId: updateTicket
+      parameters:
+        - name: lineageId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: ticketExtId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TicketUpdateRequest"
+      responses:
+        '204':
+          description: Ticket status updated and is either released and nonce will be reassigned or closed.
+
+components:
+  schemas:
+    LineageCreationRequest:
+      type: object
+      required:
+        - extId
+        - maxLeasedNonceCount
+      properties:
+        extId:
+          type: string
+        maxLeasedNonceCount:
+          type: integer
+          minimum: 1
+          maximum: 32767
+          default: 64
+
+    LineageCreationResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        extId:
+          type: string
+
+    TicketLeaseRequest:
+      type: object
+      required:
+        - extId
+      properties:
+        extId:
+          type: string
+
+    TicketLeaseResponse:
+      type: object
+      properties:
+        lineageId:
+          type: string
+        extId:
+          type: string
+        nonce:
+          type: integer
+        leasedAt:
+          type: string
+        state:
+          type: string
+          enum:
+            - leased
+            - closed
+
+    TicketUpdateRequest:
+      type: object
+      required:
+        - state
+      properties:
+        state:
+          type: string
+          enum:
+            - released
+            - closed

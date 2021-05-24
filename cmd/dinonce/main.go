@@ -1,0 +1,124 @@
+package main
+
+import (
+	"cirello.io/pglock"
+	"context"
+	"database/sql"
+	"fmt"
+	"github.com/golang-migrate/migrate/v4"
+	"github.com/golang-migrate/migrate/v4/database/postgres"
+	_ "github.com/golang-migrate/migrate/v4/source/file"
+	"github.com/rs/zerolog/log"
+	"github.com/spf13/viper"
+	"github.com/welthee/dinonce/v2/pkg/openapi"
+	"github.com/welthee/dinonce/v2/pkg/psqlticket"
+	"github.com/welthee/dinonce/v2/pkg/ticket"
+	"net/http"
+	"os"
+	"os/signal"
+	"time"
+)
+
+const Version = 1
+const ShutDownTimeout = 30 * time.Second
+
+type Config struct {
+	BackendKind   string
+	BackendConfig interface{}
+}
+
+type PostgreSQLBackendConfig struct {
+	Host         string
+	Port         int
+	User         string
+	Password     string
+	DatabaseName string
+}
+
+const backendKindPostgres = "postgres"
+
+const postgresMigrationsDir = "file://scripts/psql/migrations"
+
+func main() {
+	log.Info().Msg("starting ticketing service")
+
+	viper.SetConfigName("config")
+	viper.SetConfigType("yaml")
+	viper.AddConfigPath("/opt/dinonce/config")
+	viper.AddConfigPath("$HOME/.dinonce/config")
+	viper.AddConfigPath(".config")
+
+	err := viper.ReadInConfig()
+	if err != nil {
+		log.Fatal().Err(err).Msg("can not read config file")
+	}
+
+	var svc ticket.Servicer
+	switch viper.GetString("backendKind") {
+	case backendKindPostgres:
+		{
+			var backendCfg PostgreSQLBackendConfig
+			if err := viper.UnmarshalKey("backendConfig", &backendCfg); err != nil {
+				log.Fatal().Err(err).Msg("can not construct postgres backend")
+			}
+
+			psqlConnectionString := fmt.Sprintf("host=%s port=%d user=%s "+
+				"password=%s dbname=%s sslmode=disable",
+				backendCfg.Host, backendCfg.Port, backendCfg.User,
+				backendCfg.Password, backendCfg.DatabaseName)
+
+			db, err := sql.Open("postgres", psqlConnectionString)
+			if err != nil {
+				log.Fatal().Err(err).Msg("can not open db connection")
+			}
+			defer db.Close()
+
+			driver, err := postgres.WithInstance(db, &postgres.Config{})
+			m, err := migrate.NewWithDatabaseInstance(postgresMigrationsDir, backendCfg.DatabaseName, driver)
+			if err != nil {
+				log.Fatal().Err(err).Msg("can not migrate database schema")
+			}
+
+			if err := m.Migrate(Version); err != nil && err != migrate.ErrNoChange {
+				log.Fatal().Err(err).Msg("failed to run migrations")
+			}
+
+			lockClient, err := pglock.New(db,
+				pglock.WithHeartbeatFrequency(3*time.Second),
+				pglock.WithCustomTable("lockz"),
+			)
+			if err != nil {
+				log.Fatal().Err(err).Msg("can not create lock client")
+			}
+
+			l, err := lockClient.Acquire("alock")
+			if err != nil {
+				log.Fatal().Err(err).Msg("can not acquire lock")
+			}
+			defer l.Close()
+			svc = psqlticket.NewServicer(db)
+		}
+
+		apiHandler := openapi.NewApiHandler(svc)
+
+		go func() {
+			if err := apiHandler.Start(); err != nil && err != http.ErrServerClosed {
+				log.Fatal().Err(err).Msg("can not start API")
+			}
+			log.Info().Msg("API shut down")
+		}()
+
+		quit := make(chan os.Signal, 1)
+		signal.Notify(quit, os.Interrupt)
+		<-quit
+		log.Info().Msg("stopping ticketing service")
+
+		ctx, cancel := context.WithTimeout(context.Background(), ShutDownTimeout)
+		defer cancel()
+
+		if err := apiHandler.Stop(ctx); err != nil {
+			log.Fatal().Err(err).Msg("error on graceful shutdown of API")
+		}
+		log.Info().Msg("stopped ticketing service")
+	}
+}
