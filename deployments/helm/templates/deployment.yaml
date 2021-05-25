@@ -5,9 +5,7 @@ metadata:
   labels:
     {{- include "dinonce.labels" . | nindent 4 }}
 spec:
-  {{- if not .Values.autoscaling.enabled }}
   replicas: {{ .Values.replicaCount }}
-  {{- end }}
   selector:
     matchLabels:
       {{- include "dinonce.selectorLabels" . | nindent 6 }}
@@ -47,6 +45,13 @@ spec:
               port: http
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - mountPath: /opt/dinonce/config
+              name: config
+      volumes:
+        - name: config
+          configMap:
+            name: dinonce-config
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

@@ -3,7 +3,7 @@ replicaCount: 1
 image:
   repository: welthee/dinonce
   pullPolicy: IfNotPresent
-  tag: ""
+  tag: "latest"
 
 imagePullSecrets: []
 nameOverride: ""
@@ -37,3 +37,5 @@ nodeSelector: {}
 tolerations: []
 
 affinity: {}
+
+configYamlFilePath: "config.yaml"

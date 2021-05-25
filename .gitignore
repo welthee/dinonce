@@ -1,4 +1,5 @@
 pkg/openapi/generated
 dist/
 .idea/
+.terraform/
 
