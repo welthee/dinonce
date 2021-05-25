@@ -10,9 +10,11 @@ COPY . .
 RUN make
 
 FROM ubuntu:21.04
+RUN mkdir -p /opt/dinonce
 RUN mkdir -p /opt/dinonce/config
 RUN apt update && apt install -y ca-certificates && apt clean
+COPY ./scripts /opt/dinonce/scripts
 COPY --from=builder /tmp/src/dist/dinonce /opt/dinonce/dinonce
 VOLUME /opt/dinonce/config
-ENTRYPOINT ["/opt/dinonce/dinonce"]
 EXPOSE 5000
+ENTRYPOINT ["/opt/dinonce/dinonce"]

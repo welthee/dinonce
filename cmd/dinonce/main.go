@@ -37,7 +37,7 @@ type PostgreSQLBackendConfig struct {
 
 const backendKindPostgres = "postgres"
 
-const postgresMigrationsDir = "file://scripts/psql/migrations"
+const postgresMigrationsDir = "file://./scripts/psql/migrations"
 
 func main() {
 	log.Info().Msg("starting ticketing service")
@@ -74,9 +74,13 @@ func main() {
 			defer db.Close()
 
 			driver, err := postgres.WithInstance(db, &postgres.Config{})
+			if err != nil {
+				log.Fatal().Err(err).Msg("can not get database driver")
+			}
+
 			m, err := migrate.NewWithDatabaseInstance(postgresMigrationsDir, backendCfg.DatabaseName, driver)
 			if err != nil {
-				log.Fatal().Err(err).Msg("can not migrate database schema")
+				log.Fatal().Err(err).Msg("can not create database migrator")
 			}
 
 			if err := m.Migrate(Version); err != nil && err != migrate.ErrNoChange {

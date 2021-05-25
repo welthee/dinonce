@@ -8,5 +8,5 @@ metadata:
     release: {{ .Release.Name | quote }}
     heritage: {{ .Release.Service | quote }}
 data:
-  config.yaml:
+  config.yaml: |-
     {{ .Files.Get .Values.configYamlFilePath }}

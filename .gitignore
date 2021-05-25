@@ -2,4 +2,5 @@ pkg/openapi/generated
 dist/
 .idea/
 .terraform/
-
+.terraform.lock.hcl
+terraform.tfstate**
