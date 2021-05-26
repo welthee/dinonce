@@ -44,6 +44,24 @@ The API definition can be found [here](./api/api.yaml).
 You can generate a client library for the language of your choice using the 
 [openapi-generator](https://github.com/OpenAPITools/openapi-generator).
 
+## Deployment
+dinonce is packaged as a Docker container and pushed automatically to 
+[Docker Hub](https://hub.docker.com/repository/docker/welthee/dinonce).
+If you're interested, check out the Dockerfile that generates the image [here](./Dockerfile).
+
+Since we are fans of both Kubernetes and Terraform we have created a Helm Chart to easy deployment to Kubernetes.
+*The user is responsible to create the ConfigMap `dinonce config`*, which should contain a single `config.yaml` data
+entry and have the structure similar to [this example](./.config/config.yaml).
+
+We like to thing about the services we run as self-contained Terraform projects with clear external dependencies, 
+so we've created a handy Terraform module directory to help with deployments.
+
+Currently there is just one module that you can use, called `helm-aws-rds-psql`, which will create a managed 
+AWS RDS Aurora PostgreSQL database, create a namespace in kubernetes and deploy the aforementioned Helm Chart to your 
+cluster.
+
+See a usage [example here](./deployments/terraform/examples/helm-aws-rds-psql).
+
 ## Backends
 *dinonce* is designed to support multiple storage backends as long as they respect the above described semantics.
 
