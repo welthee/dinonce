@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/etherlabsio/healthcheck"
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
@@ -36,7 +37,6 @@ type PostgreSQLBackendConfig struct {
 }
 
 const backendKindPostgres = "postgres"
-
 const postgresMigrationsDir = "file://./scripts/psql/migrations"
 
 func main() {
@@ -52,6 +52,8 @@ func main() {
 	if err != nil {
 		log.Fatal().Err(err).Msg("can not read config file")
 	}
+
+	healthCheckers := make(map[string]healthcheck.CheckerFunc)
 
 	var svc ticket.Servicer
 	switch viper.GetString("backendKind") {
@@ -87,6 +89,10 @@ func main() {
 				log.Fatal().Err(err).Msg("failed to run migrations")
 			}
 
+			healthCheckers["database"] = func(ctx context.Context) error {
+				return db.PingContext(ctx)
+			}
+
 			lockClient, err := pglock.New(db,
 				pglock.WithHeartbeatFrequency(3*time.Second),
 				pglock.WithCustomTable("lockz"),
@@ -99,6 +105,7 @@ func main() {
 			if err != nil {
 				log.Fatal().Err(err).Msg("can not acquire lock")
 			}
+
 			defer l.Close()
 			svc = psqlticket.NewServicer(db)
 		}
@@ -110,6 +117,20 @@ func main() {
 				log.Fatal().Err(err).Msg("can not start API")
 			}
 			log.Info().Msg("API shut down")
+		}()
+
+		go func() {
+			var opts []healthcheck.Option
+			for k, v := range healthCheckers {
+				opts = append(opts, healthcheck.WithChecker(k, v))
+				log.Info().Str("key", k).Msg("adding healthcheck")
+			}
+			opts = append(opts, healthcheck.WithTimeout(5*time.Second))
+			err := http.ListenAndServe(":5001", healthcheck.Handler(opts...))
+
+			if err != nil && err != http.ErrServerClosed {
+				log.Fatal().Err(err).Msg("can not start healthcheck handler")
+			}
 		}()
 
 		quit := make(chan os.Signal, 1)

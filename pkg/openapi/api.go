@@ -65,7 +65,7 @@ func (h *ApiHandler) LeaseTicket(ctx echo.Context, lineageId string) error {
 
 func (h *ApiHandler) GetTicket(ctx echo.Context, lineageId string, ticketExtId string) error {
 	resp, err := h.servicer.GetTicket(lineageId, ticketExtId)
-	if err != nil{
+	if err != nil {
 		if err == ticket.ErrorNoSuchTicket {
 			return ctx.NoContent(http.StatusNotFound)
 		}

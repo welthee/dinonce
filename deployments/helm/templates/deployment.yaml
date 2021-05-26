@@ -33,16 +33,18 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
             - name: http
-              containerPort: 5000
+              containerPort: 5010
               protocol: TCP
           livenessProbe:
             httpGet:
-              path: /
-              port: http
+              path: /health
+              port: 5001
+            initialDelaySeconds: 5
           readinessProbe:
             httpGet:
-              path: /
-              port: http
+              path: /health
+              port: 5001
+            initialDelaySeconds: 5
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           volumeMounts:
