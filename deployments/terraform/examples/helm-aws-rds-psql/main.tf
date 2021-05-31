@@ -28,8 +28,8 @@ provider "helm" {
   }
 }
 
-module "dinonce" {
-  source = "../../modules/helm-aws-rds-psql"
+module "dinonce_rds" {
+  source = "../../modules/helm-aws-rds-psql/aws-rds-psql"
 
   aws_vpc_id = "vpc-xxxxxxxxxxxxxxxxx"
 
@@ -39,4 +39,14 @@ module "dinonce" {
   ]
 
   aws_security_group_k8s_node = "sg-xxxxxxxxxxxxxxxxx"
+}
+
+module "dinonce_helm" {
+  source = "../../modules/helm-aws-rds-psql/helm"
+
+  rds_cluster_endpoint = module.dinonce_rds.rds_cluster_endpoint
+  rds_cluster_port = module.dinonce_rds.rds_cluster_port
+  rds_username = module.dinonce_rds.rds_cluster_username
+  rds_password = module.dinonce_rds.rds_cluster_password
+  rds_database_name = module.dinonce_rds.rds_cluster_database_name
 }

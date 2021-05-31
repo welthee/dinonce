@@ -14,11 +14,11 @@ resource "kubernetes_config_map" "dinonce_config" {
     "config.yaml" = <<EOF
 backendKind: postgres
 backendConfig:
-  host: ${module.db.this_rds_cluster_endpoint}
-  port: ${module.db.this_rds_cluster_port}
-  user: ${module.db.this_rds_cluster_master_username}
-  password: ${module.db.this_rds_cluster_master_password}
-  databaseName: ${module.db.this_rds_cluster_database_name}
+  host: ${var.rds_cluster_endpoint}
+  port: ${var.rds_cluster_port}
+  user: ${var.rds_username}
+  password: ${var.rds_password}
+  databaseName: ${var.rds_database_name}
 EOF
   }
 }
