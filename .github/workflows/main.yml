@@ -1,0 +1,61 @@
+name: main branch
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'api/**'
+      - 'cmd/**'
+      - 'deployments/**'
+      - 'internal/**'
+      - 'pkg/**'
+      - 'scripts/**'
+      - 'go.*'
+      - 'Dockerfile'
+
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    container: mpdred/semantic-tagger:latest
+    steps:
+
+    - uses: actions/checkout@v2
+      with:
+        fetch-depth: 50
+
+    - name: Set the version number
+      run: |
+        git config --global user.email "ci+github@welthee.com"
+        git config --global user.name "ci"
+
+        semtag -increment=auto -git-tag -push
+        semtag | tail -1 > .version.txt
+
+    - name: Upload the version file
+      uses: actions/upload-artifact@v2
+      with:
+        name: version-file
+        path: .version.txt
+        retention-days: 1
+
+
+  build:
+    runs-on: ubuntu-latest
+    needs: [version]
+    steps:
+
+    - uses: actions/checkout@v2
+
+    - name: Download the version file
+      uses: actions/download-artifact@v2
+      with:
+        name: version-file
+
+    - name: Build and tag the image
+      env:
+        ECR_REGISTRY: to-be-implemented
+        ECR_REPOSITORY: ${{ github.repository }}
+      run: |
+        export VERSION="$(cat .version.txt)"
+        docker build --tag $ECR_REGISTRY/$ECR_REPOSITORY:$VERSION .
