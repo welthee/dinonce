@@ -6,8 +6,9 @@ import (
 )
 
 var (
-	ErrorNoSuchLineage = errors.New("no such lineage")
-	ErrorNoSuchTicket  = errors.New("no such ticket")
+	ErrNoSuchLineage = errors.New("no such lineage")
+	ErrNoSuchTicket  = errors.New("no such ticket")
+	ErrInvalidRequest = errors.New("invalid request")
 )
 
 type Servicer interface {

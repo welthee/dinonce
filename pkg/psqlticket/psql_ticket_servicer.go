@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 	_ "github.com/lib/pq"
 	"github.com/rs/zerolog/log"
 	api "github.com/welthee/dinonce/v2/pkg/openapi/generated"
@@ -13,7 +14,7 @@ import (
 
 const QueryStringInsertLineage = `insert into lineages(id, ext_id, next_nonce, leased_nonce_count, 
 released_nonce_count, max_leased_nonce_count, max_nonce_value, version) 
-values ($1, $2, 0, 0, 0, $3, 9223372036854775807, 0) 
+values ($1, $2, $3, 0, 0, $4, 9223372036854775807, 0) 
 returning id;`
 
 const QueryStringCreateTicket = `select create_ticket($1, $2, $3);`
@@ -38,8 +39,13 @@ func (p *Servicer) CreateLineage(request *api.LineageCreationRequest) (*api.Line
 		return nil, err
 	}
 
+	if request.StartLeasingFrom == nil {
+		zero := 0
+		request.StartLeasingFrom = &zero
+	}
+
 	rows, err := p.db.QueryContext(context.TODO(), QueryStringInsertLineage,
-		aUuid.String(), request.ExtId, request.MaxLeasedNonceCount)
+		aUuid.String(), request.ExtId, request.StartLeasingFrom, request.MaxLeasedNonceCount)
 	if err != nil {
 		return nil, err
 	}
@@ -69,6 +75,10 @@ func (p *Servicer) LeaseTicket(lineageId string, request *api.TicketLeaseRequest
 
 	rows, err := p.db.QueryContext(context.TODO(), QueryStringCreateTicket, lineageId, version, request.ExtId)
 	if err != nil {
+		if pqErr, ok := err.(*pq.Error); ok && pqErr.Message == "validation_error" {
+			return nil, ticket.ErrInvalidRequest
+		}
+
 		return nil, err
 	}
 	defer rows.Close()

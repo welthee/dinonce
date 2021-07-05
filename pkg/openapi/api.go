@@ -40,6 +40,11 @@ func (h *ApiHandler) CreateLineage(ctx echo.Context) error {
 		return err
 	}
 
+	if req.StartLeasingFrom == nil {
+		zero := 0
+		req.StartLeasingFrom = &zero
+	}
+
 	resp, err := h.servicer.CreateLineage(req)
 	if err != nil {
 		return err
@@ -66,7 +71,7 @@ func (h *ApiHandler) LeaseTicket(ctx echo.Context, lineageId string) error {
 func (h *ApiHandler) GetTicket(ctx echo.Context, lineageId string, ticketExtId string) error {
 	resp, err := h.servicer.GetTicket(lineageId, ticketExtId)
 	if err != nil {
-		if err == ticket.ErrorNoSuchTicket {
+		if err == ticket.ErrNoSuchTicket {
 			return ctx.NoContent(http.StatusNotFound)
 		}
 	}

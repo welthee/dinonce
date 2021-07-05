@@ -151,6 +151,9 @@ func TestServicer_LeaseTicket_SingleTicketCloseAndAfterCreateValidation(t *testi
 		t.Error("should not be able to lease a ticket with a closed ticket's ref")
 	}
 
+	if err != ticket.ErrInvalidRequest {
+		t.Errorf("expected validation error")
+	}
 }
 
 func TestServicer_LeaseTicket_ReleasedNonceCorrectReassignment(t *testing.T) {
@@ -225,8 +228,6 @@ func TestServicer_GetTicket_ClosedOk(t *testing.T) {
 	if err != nil {
 		t.Errorf("can not get ticket %s", err)
 	}
-
-	log.Info().Interface("x", resp).Msg("got ticket")
 
 	if *resp.State != "closed" {
 		t.Error("ticket should be in leased state")
