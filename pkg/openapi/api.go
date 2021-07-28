@@ -47,6 +47,13 @@ func (h *ApiHandler) CreateLineage(ctx echo.Context) error {
 
 	resp, err := h.servicer.CreateLineage(req)
 	if err != nil {
+		if err == ticket.ErrInvalidRequest {
+			return ctx.JSON(http.StatusBadRequest, api.Error{
+				Code:      http.StatusBadRequest,
+				Message:   err.Error(),
+				RequestId: "", //TODO
+			})
+		}
 		return err
 	}
 

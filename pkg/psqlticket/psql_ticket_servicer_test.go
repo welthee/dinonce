@@ -17,7 +17,7 @@ import (
 
 const (
 	host     = "localhost"
-	port     = 5432
+	port     = 5433
 	user     = "postgres"
 	password = "postgres"
 	dbname   = "postgres"
@@ -38,6 +38,10 @@ func init() {
 	}
 
 	driver, err := postgres.WithInstance(db, &postgres.Config{})
+	if err != nil {
+		log.Fatal().Err(err).Msg("can not get db instance")
+	}
+
 	m, err := migrate.NewWithDatabaseInstance("file://../../scripts/psql/migrations", "postgres", driver)
 	if err != nil {
 		log.Fatal().Err(err).Msg("can not migrate database schema")
