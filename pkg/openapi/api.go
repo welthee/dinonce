@@ -72,7 +72,7 @@ func (h *ApiHandler) LeaseTicket(ctx echo.Context, lineageId string) error {
 				Message: err.Error(),
 			})
 		} else if err == ticket.ErrTooManyLeasedTickets {
-			return ctx.JSON(http.StatusBadRequest, api.Error{
+			return ctx.JSON(http.StatusTooManyRequests, api.Error{
 				Code:    ErrorCodeTooManyLeasedTickets,
 				Message: err.Error(),
 			})

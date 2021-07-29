@@ -180,7 +180,7 @@ func TestServicer_LeaseTicket_MaxLeasedNonceCountValidation(t *testing.T) {
 	}
 
 	_, err := victim.LeaseTicket(lineageId, request)
-	if err == nil || err != ticket.ErrTooManyLeasedTickets{
+	if err == nil || err != ticket.ErrTooManyLeasedTickets {
 		t.Errorf("expected error to be ErrTooManyLeasedTickets")
 	}
 }
