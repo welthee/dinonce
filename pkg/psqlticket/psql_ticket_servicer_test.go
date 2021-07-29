@@ -24,6 +24,7 @@ const (
 )
 
 const Version = 1
+const maxLeasedNonceCount = 64
 
 var victim ticket.Servicer
 
@@ -160,6 +161,30 @@ func TestServicer_LeaseTicket_SingleTicketCloseAndAfterCreateValidation(t *testi
 	}
 }
 
+func TestServicer_LeaseTicket_MaxLeasedNonceCountValidation(t *testing.T) {
+	lineageId := createLineage(t)
+
+	for i := 0; i < maxLeasedNonceCount; i++ {
+		request := &api.TicketLeaseRequest{
+			ExtId: fmt.Sprintf("tx%d", i),
+		}
+
+		_, err := victim.LeaseTicket(lineageId, request)
+		if err != nil {
+			t.Errorf("can not lease ticket %s", err)
+		}
+	}
+
+	request := &api.TicketLeaseRequest{
+		ExtId: fmt.Sprintf("failing-tx"),
+	}
+
+	_, err := victim.LeaseTicket(lineageId, request)
+	if err == nil || err != ticket.ErrTooManyLeasedTickets{
+		t.Errorf("expected error to be ErrTooManyLeasedTickets")
+	}
+}
+
 func TestServicer_LeaseTicket_ReleasedNonceCorrectReassignment(t *testing.T) {
 	lineageId := createLineage(t)
 
@@ -242,7 +267,7 @@ func TestServicer_GetTicket_ClosedOk(t *testing.T) {
 func createLineage(t *testing.T) string {
 	resp, err := victim.CreateLineage(&api.LineageCreationRequest{
 		ExtId:               fmt.Sprintf("test-%d", time.Now().Unix()),
-		MaxLeasedNonceCount: 64,
+		MaxLeasedNonceCount: maxLeasedNonceCount,
 	})
 	if err != nil {
 		t.Errorf("can not create lineage %s", err)

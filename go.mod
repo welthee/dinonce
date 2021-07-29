@@ -11,8 +11,8 @@ require (
 	github.com/google/uuid v1.2.0
 	github.com/labstack/echo/v4 v4.3.0
 	github.com/lib/pq v1.10.1
-	github.com/pkg/errors v0.9.1
 	github.com/rs/zerolog v1.21.0
+	github.com/segmentio/ksuid v1.0.4
 	github.com/spf13/viper v1.7.1
 	github.com/ziflex/lecho/v2 v2.3.0
 )

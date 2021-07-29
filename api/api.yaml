@@ -167,11 +167,8 @@ components:
       required:
         - code
         - message
-        - requestId
       properties:
         code:
-          type: integer
-        message:
           type: string
-        requestId:
+        message:
           type: string

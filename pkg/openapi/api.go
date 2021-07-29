@@ -8,6 +8,7 @@ import (
 	"github.com/labstack/echo/v4"
 	echomiddleware "github.com/labstack/echo/v4/middleware"
 	"github.com/rs/zerolog"
+	"github.com/segmentio/ksuid"
 	api "github.com/welthee/dinonce/v2/pkg/openapi/generated"
 	"github.com/welthee/dinonce/v2/pkg/ticket"
 	"github.com/ziflex/lecho/v2"
@@ -17,6 +18,9 @@ import (
 )
 
 const port = 5010
+
+const ErrorCodeBadRequest = "bad_request"
+const ErrorCodeTooManyLeasedTickets = "too_many_leased_tickets"
 
 type ApiHandler struct {
 	e        *echo.Echo
@@ -47,13 +51,6 @@ func (h *ApiHandler) CreateLineage(ctx echo.Context) error {
 
 	resp, err := h.servicer.CreateLineage(req)
 	if err != nil {
-		if err == ticket.ErrInvalidRequest {
-			return ctx.JSON(http.StatusBadRequest, api.Error{
-				Code:      http.StatusBadRequest,
-				Message:   err.Error(),
-				RequestId: "", //TODO
-			})
-		}
 		return err
 	}
 
@@ -69,6 +66,18 @@ func (h *ApiHandler) LeaseTicket(ctx echo.Context, lineageId string) error {
 
 	resp, err := h.servicer.LeaseTicket(lineageId, req)
 	if err != nil {
+		if err == ticket.ErrInvalidRequest {
+			return ctx.JSON(http.StatusBadRequest, api.Error{
+				Code:    ErrorCodeBadRequest,
+				Message: err.Error(),
+			})
+		} else if err == ticket.ErrTooManyLeasedTickets {
+			return ctx.JSON(http.StatusBadRequest, api.Error{
+				Code:    ErrorCodeTooManyLeasedTickets,
+				Message: err.Error(),
+			})
+		}
+
 		return err
 	}
 
@@ -123,7 +132,11 @@ func (h *ApiHandler) Start() error {
 	)
 	logger.SetOutput(zerolog.ConsoleWriter{Out: os.Stderr})
 	h.e.Logger = logger
-	h.e.Use(echomiddleware.RequestID())
+	h.e.Use(echomiddleware.RequestIDWithConfig(echomiddleware.RequestIDConfig{
+		Generator: func() string {
+			return ksuid.New().String()
+		},
+	}))
 
 	h.e.Use(lecho.Middleware(lecho.Config{
 		Skipper: func(e echo.Context) bool {
