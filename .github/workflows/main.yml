@@ -61,12 +61,22 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      - name: Create env file
+        run: |
+          touch .env
+          echo "DOCKERHUB_ORG=welthee" >> .env
+          echo "DOCKERHUB_REPO=dinonce" >> .env
+          echo "VERSION=$(cat .version.txt)" >> .env
+          cat .env
+
+      - name: Dotenv Action
+        uses: falti/dotenv-action@v0.2.6
+
       - name: Build and push
         id: docker_build
         uses: docker/build-push-action@v2
         with:
           push: true
           tags: |
-            $DOCKERHUB_ORG/$DOCKERHUB_REPO:latest
-          # export VERSION="$(cat .version.txt)"
-          # $DOCKERHUB_ORG/$DOCKERHUB_REPO:$VERSION
+            ${{ steps.dotenv.outputs.dockerhub_org }}/${{ steps.dotenv.outputs.dockerhub_repo }}:${{ steps.dotenv.outputs.version }}
+            ${{ steps.dotenv.outputs.dockerhub_org }}/${{ steps.dotenv.outputs.dockerhub_repo }}:latest
