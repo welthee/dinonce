@@ -70,6 +70,7 @@ jobs:
           cat .env
 
       - name: Dotenv Action
+        id: dotenv
         uses: falti/dotenv-action@v0.2.6
 
       - name: Build and push
