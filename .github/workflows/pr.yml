@@ -3,6 +3,7 @@ name: pull requests
 on:
   pull_request:
     paths:
+      - '.github/**'
       - 'api/**'
       - 'cmd/**'
       - 'deployments/**'

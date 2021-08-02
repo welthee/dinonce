@@ -1,6 +1,8 @@
 ![dinonce_gopher](gopher.png)
 # dinonce - a distributed nonce tracker
 
+[![main branch](https://github.com/welthee/dinonce/actions/workflows/main.yml/badge.svg)](https://github.com/welthee/dinonce/actions/workflows/main.yml)
+
 For most blockchain clients it is essential to keep track of transaction nonces that protect against duplicate 
 transactions and replay attacks.
 
