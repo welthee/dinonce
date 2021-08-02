@@ -23,11 +23,6 @@ import (
 const Version = 1
 const ShutDownTimeout = 30 * time.Second
 
-type Config struct {
-	BackendKind   string
-	BackendConfig interface{}
-}
-
 type PostgreSQLBackendConfig struct {
 	Host         string
 	Port         int

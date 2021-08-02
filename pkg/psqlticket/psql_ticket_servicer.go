@@ -75,13 +75,25 @@ func (p *Servicer) LeaseTicket(lineageId string, request *api.TicketLeaseRequest
 
 	rows, err := p.db.QueryContext(context.TODO(), QueryStringCreateTicket, lineageId, version, request.ExtId)
 	if err != nil {
-		if pqErr, ok := err.(*pq.Error); ok && pqErr.Message == "validation_error" {
-			return nil, ticket.ErrInvalidRequest
+		if pqErr, ok := err.(*pq.Error); ok {
+			switch pqErr.Message {
+			case "validation_error":
+				return nil, ticket.ErrInvalidRequest
+			case "max_unused_limit_exceeded":
+				return nil, ticket.ErrTooManyLeasedTickets
+			default:
+				return nil, err
+			}
 		}
-
 		return nil, err
 	}
-	defer rows.Close()
+
+	defer func(rows *sql.Rows) {
+		err := rows.Close()
+		if err != nil {
+			log.Error().Err(err).Msg("can't close rows")
+		}
+	}(rows)
 
 	nonce, err := getNonceFromRow(rows)
 	if err != nil {
@@ -137,7 +149,13 @@ func (p *Servicer) ReleaseTicket(lineageId string, ticketExtId string) error {
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
+
+	defer func(rows *sql.Rows) {
+		err := rows.Close()
+		if err != nil {
+			log.Error().Err(err).Msg("can't close rows")
+		}
+	}(rows)
 
 	nonce, err := getNonceFromRow(rows)
 	if err != nil {
@@ -177,7 +195,12 @@ func (p *Servicer) getLineageVersion(lineageId string) (int64, error) {
 	if err != nil || !rows.Next() {
 		return 0, err
 	}
-	defer rows.Close()
+	defer func(rows *sql.Rows) {
+		err := rows.Close()
+		if err != nil {
+			log.Error().Err(err).Msg("can't close rows")
+		}
+	}(rows)
 
 	var v int64
 	if err := rows.Scan(&v); err != nil {
