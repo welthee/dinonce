@@ -111,7 +111,6 @@ func (p *Servicer) GetLineage(extId string) (*api.LineageGetResponse, error) {
 		ReleasedNonceCount:  releasedNonceCount,
 		MaxLeasedNonceCount: maxLeasedNonceCount,
 		MaxNonceValue:       maxNonceValue,
-		Version:             version,
 	}
 
 	log.Info().

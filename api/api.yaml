@@ -170,8 +170,6 @@ components:
           type: integer
         maxNonceValue:
           type: integer
-        version:
-          type: integer
 
     TicketLeaseRequest:
       type: object
