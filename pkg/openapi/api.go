@@ -19,6 +19,7 @@ import (
 
 const port = 5010
 
+const ErrorCodeNotFound = "not_found"
 const ErrorCodeBadRequest = "bad_request"
 const ErrorCodeTooManyLeasedTickets = "too_many_leased_tickets"
 
@@ -51,6 +52,29 @@ func (h *ApiHandler) CreateLineage(ctx echo.Context) error {
 
 	resp, err := h.servicer.CreateLineage(req)
 	if err != nil {
+		if err == ticket.ErrInvalidRequest {
+			return ctx.JSON(http.StatusBadRequest, api.Error{
+				Code:    ErrorCodeBadRequest,
+				Message: err.Error(),
+			})
+		}
+
+		return err
+	}
+
+	return ctx.JSON(http.StatusOK, resp)
+}
+
+func (h *ApiHandler) GetLineage(ctx echo.Context, lineageId string) error {
+	resp, err := h.servicer.GetLineage(lineageId)
+	if err != nil {
+		if err == ticket.ErrNoSuchLineage {
+			return ctx.JSON(http.StatusNotFound, api.Error{
+				Code:    ErrorCodeNotFound,
+				Message: err.Error(),
+			})
+		}
+
 		return err
 	}
 

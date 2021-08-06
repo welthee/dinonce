@@ -21,6 +21,23 @@ paths:
               schema:
                 $ref: "#/components/schemas/LineageCreationResponse"
 
+  /lineages/{lineageId}:
+    get:
+      operationId: getLineage
+      parameters:
+        - name: lineageId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Lineage retrieved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LineageGetResponse"
+
   /lineages/{lineageId}/tickets:
     post:
       operationId: leaseTicket
@@ -119,12 +136,40 @@ components:
           maximum: 9223372036854775807
 
     LineageCreationResponse:
-      type: object
+      required:
+        - id
+        - extId
       properties:
         id:
           type: string
         extId:
           type: string
+
+    LineageGetResponse:
+      required:
+        - id
+        - extId
+        - nextNonce
+        - leasedNonceCount
+        - releasedNonceCount
+        - maxLeasedNonceCount
+        - maxNonceValue
+        - version
+      properties:
+        id:
+          type: string
+        extId:
+          type: string
+        nextNonce:
+          type: integer
+        leasedNonceCount:
+          type: integer
+        releasedNonceCount:
+          type: integer
+        maxLeasedNonceCount:
+          type: integer
+        maxNonceValue:
+          type: integer
 
     TicketLeaseRequest:
       type: object
@@ -136,6 +181,12 @@ components:
 
     TicketLeaseResponse:
       type: object
+      required:
+        - lineageId
+        - extId
+        - nonce
+        - leasedAt
+        - state
       properties:
         lineageId:
           type: string

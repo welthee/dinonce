@@ -17,6 +17,9 @@ released_nonce_count, max_leased_nonce_count, max_nonce_value, version)
 values ($1, $2, $3, 0, 0, $4, 9223372036854775807, 0) 
 returning id;`
 
+const QueryStringSelectLineageByExtId = `select id, next_nonce, leased_nonce_count, 
+released_nonce_count, max_leased_nonce_count, max_nonce_value, version from lineages where ext_id = $1`
+
 const QueryStringCreateTicket = `select create_ticket($1, $2, $3);`
 const QueryStringReleaseTicket = `select release_ticket($1, $2, $3);`
 const QueryStringCloseTicket = `select close_ticket($1, $2, $3);`
@@ -47,6 +50,14 @@ func (p *Servicer) CreateLineage(request *api.LineageCreationRequest) (*api.Line
 	rows, err := p.db.QueryContext(context.TODO(), QueryStringInsertLineage,
 		aUuid.String(), request.ExtId, request.StartLeasingFrom, request.MaxLeasedNonceCount)
 	if err != nil {
+		if pqErr, ok := err.(*pq.Error); ok {
+			switch pqErr.Constraint {
+			case "lineages_ext_id_idx":
+				return nil, ticket.ErrInvalidRequest
+			default:
+				return nil, err
+			}
+		}
 		return nil, err
 	}
 
@@ -60,9 +71,53 @@ func (p *Servicer) CreateLineage(request *api.LineageCreationRequest) (*api.Line
 	}
 
 	resp := &api.LineageCreationResponse{
-		Id:    &lineageId,
-		ExtId: &request.ExtId,
+		Id:    lineageId,
+		ExtId: request.ExtId,
 	}
+
+	log.Info().
+		Str("id", lineageId).
+		Str("extId", request.ExtId).
+		Msg("created lineage")
+
+	return resp, nil
+}
+
+func (p *Servicer) GetLineage(extId string) (*api.LineageGetResponse, error) {
+	var id string
+	var nextNonce int
+	var leasedNonceCount int
+	var releasedNonceCount int
+	var maxLeasedNonceCount int
+	var maxNonceValue int
+	var version int
+
+	err := p.db.QueryRowContext(context.TODO(), QueryStringSelectLineageByExtId, extId).
+		Scan(&id, &nextNonce, &leasedNonceCount,
+			&releasedNonceCount, &maxLeasedNonceCount, &maxNonceValue, &version)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, ticket.ErrNoSuchLineage
+		}
+
+		return nil, err
+	}
+
+	resp := &api.LineageGetResponse{
+		Id:                  id,
+		ExtId:               extId,
+		NextNonce:           nextNonce,
+		LeasedNonceCount:    leasedNonceCount,
+		ReleasedNonceCount:  releasedNonceCount,
+		MaxLeasedNonceCount: maxLeasedNonceCount,
+		MaxNonceValue:       maxNonceValue,
+	}
+
+	log.Info().
+		Str("lineageId", id).
+		Str("extId", extId).
+		Int("version", version).
+		Msg("retrieved lineage")
 
 	return resp, nil
 }
@@ -101,15 +156,15 @@ func (p *Servicer) LeaseTicket(lineageId string, request *api.TicketLeaseRequest
 	}
 
 	resp := &api.TicketLeaseResponse{
-		LineageId: &lineageId,
-		ExtId:     &request.ExtId,
-		Nonce:     nonce,
+		LineageId: lineageId,
+		ExtId:     request.ExtId,
+		Nonce:     *nonce,
 	}
 
 	log.Info().
-		Str("lineage", *resp.LineageId).
-		Str("ref", *resp.ExtId).
-		Int("nonce", *resp.Nonce).
+		Str("lineageId", resp.LineageId).
+		Str("extId", resp.ExtId).
+		Int("nonce", resp.Nonce).
 		Msg("leased ticket")
 
 	return resp, nil
@@ -129,12 +184,18 @@ func (p *Servicer) GetTicket(lineageId string, ticketExtId string) (*api.TicketL
 	state := api.TicketLeaseResponseState(stateStr)
 
 	resp := &api.TicketLeaseResponse{
-		ExtId:     &ticketExtId,
-		LeasedAt:  &leasedAtStr,
-		LineageId: &lineageId,
-		Nonce:     &nonce,
-		State:     &state,
+		ExtId:     ticketExtId,
+		LeasedAt:  leasedAtStr,
+		LineageId: lineageId,
+		Nonce:     nonce,
+		State:     state,
 	}
+
+	log.Info().
+		Str("lineageId", lineageId).
+		Str("extId", ticketExtId).
+		Str("leased_at", leasedAtStr).
+		Msg("retrieved ticket")
 
 	return resp, nil
 }
@@ -163,8 +224,8 @@ func (p *Servicer) ReleaseTicket(lineageId string, ticketExtId string) error {
 	}
 
 	log.Info().
-		Str("lineage", lineageId).
-		Str("ref", ticketExtId).
+		Str("lineageId", lineageId).
+		Str("extId", ticketExtId).
 		Int("nonce", *nonce).
 		Msg("released ticket")
 
@@ -183,8 +244,8 @@ func (p *Servicer) CloseTicket(lineageId string, ticketExtId string) error {
 	}
 
 	log.Info().
-		Str("lineage", lineageId).
-		Str("ref", ticketExtId).
+		Str("lineageId", lineageId).
+		Str("extId", ticketExtId).
 		Msg("closed ticket")
 
 	return nil
