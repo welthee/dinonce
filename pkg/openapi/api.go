@@ -65,8 +65,8 @@ func (h *ApiHandler) CreateLineage(ctx echo.Context) error {
 	return ctx.JSON(http.StatusOK, resp)
 }
 
-func (h *ApiHandler) GetLineage(ctx echo.Context, lineageId string) error {
-	resp, err := h.servicer.GetLineage(lineageId)
+func (h *ApiHandler) GetLineageByExtId(ctx echo.Context, params api.GetLineageByExtIdParams) error {
+	resp, err := h.servicer.GetLineage(params.ExtId)
 	if err != nil {
 		if err == ticket.ErrNoSuchLineage {
 			return ctx.JSON(http.StatusNotFound, api.Error{

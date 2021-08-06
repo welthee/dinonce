@@ -20,13 +20,11 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/LineageCreationResponse"
-
-  /lineages/{lineageId}:
     get:
-      operationId: getLineage
+      operationId: getLineageByExtId
       parameters:
-        - name: lineageId
-          in: path
+        - name: extId
+          in: query
           required: true
           schema:
             type: string
