@@ -26,6 +26,8 @@ create table if not exists lineages
     primary key (id)
 );
 
+create unique index lineages_ext_id_idx on lineages(ext_id);
+
 create table if not exists tickets
 (
     lineage_id   uuid,
@@ -58,10 +60,6 @@ create table if not exists lockz
     owner                 character varying(255)
 );
 create sequence lockz_rvn owned by public.lockz.record_version_number;
-
-insert into lineages(id, ext_id, next_nonce, leased_nonce_count, released_nonce_count, max_leased_nonce_count,
-                     max_nonce_value, version)
-values ('96b68897-9a1f-4d66-b158-a66a2bafcace', 'default', 0, 0, 0, 64, 9223372036854775807, 0);
 
 create or replace function create_ticket(
     _lineage_id uuid,

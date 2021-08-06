@@ -14,6 +14,7 @@ var (
 
 type Servicer interface {
 	CreateLineage(request *api.LineageCreationRequest) (*api.LineageCreationResponse, error)
+	GetLineage(extId string) (*api.LineageGetResponse, error)
 	LeaseTicket(lineageId string, request *api.TicketLeaseRequest) (*api.TicketLeaseResponse, error)
 	GetTicket(lineageId string, ticketExtId string) (*api.TicketLeaseResponse, error)
 	ReleaseTicket(lineageId string, ticketExtId string) error

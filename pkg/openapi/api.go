@@ -57,6 +57,10 @@ func (h *ApiHandler) CreateLineage(ctx echo.Context) error {
 	return ctx.JSON(http.StatusOK, resp)
 }
 
+func (h *ApiHandler) GetLineage(ctx echo.Context, lineageId string) error {
+	panic("implement me")
+}
+
 func (h *ApiHandler) LeaseTicket(ctx echo.Context, lineageId string) error {
 	req := &api.TicketLeaseRequest{}
 	err := ctx.Bind(req)
