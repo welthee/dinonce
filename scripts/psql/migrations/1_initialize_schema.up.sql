@@ -168,6 +168,10 @@ begin
       and lease_status = 'leased'
     returning nonce into _nonce;
 
+    if _nonce is null then
+        raise exception 'no_such_ticket';
+    end if;
+
     insert into released_tickets(lineage_id, nonce, released_at) values (_lineage_id, _nonce, _now);
 
     update lineages
@@ -196,6 +200,7 @@ $$
 declare
     _now        timestamptz;
     _newversion bigint;
+    _selected_ticket_ext_id character varying(64);
 begin
     _now := now();
 
@@ -203,7 +208,12 @@ begin
     set lease_status='closed'
     where lineage_id = _lineage_id
       and ext_id = _ticket_ext_id
-      and lease_status = 'leased';
+      and lease_status = 'leased'
+    returning ext_id into _selected_ticket_ext_id;
+
+    if _selected_ticket_ext_id is null then
+        raise exception 'no_such_ticket';
+    end if;
 
     update lineages
     set leased_nonce_count = lineages.leased_nonce_count - 1,

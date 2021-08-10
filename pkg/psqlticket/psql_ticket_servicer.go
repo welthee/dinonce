@@ -60,6 +60,7 @@ func (p *Servicer) CreateLineage(request *api.LineageCreationRequest) (*api.Line
 		}
 		return nil, err
 	}
+	defer rowClose(rows)
 
 	if !rows.Next() {
 		return nil, errors.New("expected newly created lineage_id in result set")
@@ -142,13 +143,7 @@ func (p *Servicer) LeaseTicket(lineageId string, request *api.TicketLeaseRequest
 		}
 		return nil, err
 	}
-
-	defer func(rows *sql.Rows) {
-		err := rows.Close()
-		if err != nil {
-			log.Error().Err(err).Msg("can't close rows")
-		}
-	}(rows)
+	defer rowClose(rows)
 
 	nonce, err := getNonceFromRow(rows)
 	if err != nil {
@@ -208,15 +203,17 @@ func (p *Servicer) ReleaseTicket(lineageId string, ticketExtId string) error {
 
 	rows, err := p.db.QueryContext(context.TODO(), QueryStringReleaseTicket, lineageId, version, ticketExtId)
 	if err != nil {
+		if pqErr, ok := err.(*pq.Error); ok {
+			switch pqErr.Message {
+			case "no_such_ticket":
+				return ticket.ErrNoSuchTicket
+			default:
+				return err
+			}
+		}
 		return err
 	}
-
-	defer func(rows *sql.Rows) {
-		err := rows.Close()
-		if err != nil {
-			log.Error().Err(err).Msg("can't close rows")
-		}
-	}(rows)
+	defer rowClose(rows)
 
 	nonce, err := getNonceFromRow(rows)
 	if err != nil {
@@ -240,6 +237,14 @@ func (p *Servicer) CloseTicket(lineageId string, ticketExtId string) error {
 
 	_, err = p.db.ExecContext(context.TODO(), QueryStringCloseTicket, lineageId, version, ticketExtId)
 	if err != nil {
+		if pqErr, ok := err.(*pq.Error); ok {
+			switch pqErr.Message {
+			case "no_such_ticket":
+				return ticket.ErrNoSuchTicket
+			default:
+				return err
+			}
+		}
 		return err
 	}
 
@@ -256,12 +261,7 @@ func (p *Servicer) getLineageVersion(lineageId string) (int64, error) {
 	if err != nil || !rows.Next() {
 		return 0, err
 	}
-	defer func(rows *sql.Rows) {
-		err := rows.Close()
-		if err != nil {
-			log.Error().Err(err).Msg("can't close rows")
-		}
-	}(rows)
+	defer rowClose(rows)
 
 	var v int64
 	if err := rows.Scan(&v); err != nil {
@@ -281,4 +281,11 @@ func getNonceFromRow(rows *sql.Rows) (*int, error) {
 	}
 
 	return &nonce, nil
+}
+
+func rowClose(rows *sql.Rows){
+	err := rows.Close()
+	if err != nil {
+		log.Error().Err(err).Msg("can't close rows")
+	}
 }

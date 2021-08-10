@@ -129,16 +129,16 @@ func (h *ApiHandler) UpdateTicket(ctx echo.Context, lineageId string, ticketExtI
 	switch req.State {
 	case api.TicketUpdateRequestStateReleased:
 		err = h.servicer.ReleaseTicket(lineageId, ticketExtId)
-		if err != nil {
-			return err
-		}
 	case api.TicketUpdateRequestStateClosed:
-		err := h.servicer.CloseTicket(lineageId, ticketExtId)
-		if err != nil {
-			return err
-		}
+		err = h.servicer.CloseTicket(lineageId, ticketExtId)
 	default:
 		ctx.Error(errors.New("state must be one of:(released,closed)"))
+	}
+	if err != nil {
+		if err == ticket.ErrNoSuchTicket {
+			return ctx.NoContent(http.StatusNotFound)
+		}
+		return err
 	}
 
 	return ctx.NoContent(http.StatusNoContent)
