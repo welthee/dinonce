@@ -153,8 +153,8 @@ func (h *ApiHandler) Start() error {
 	logger := lecho.New(
 		os.Stdout,
 		lecho.WithTimestamp(),
+		lecho.WithField("component", "api"),
 	)
-	logger.SetOutput(zerolog.ConsoleWriter{Out: os.Stderr})
 	h.e.Logger = logger
 	h.e.Use(echomiddleware.RequestIDWithConfig(echomiddleware.RequestIDConfig{
 		Generator: func() string {
@@ -168,6 +168,21 @@ func (h *ApiHandler) Start() error {
 			return strings.Contains(userAgent, "kube-probe")
 		},
 		Logger: logger,
+	}))
+
+	requestBodyLogger := zerolog.New(os.Stderr).With().
+		Timestamp().
+		Logger()
+
+	h.e.Use(echomiddleware.BodyDumpWithConfig(echomiddleware.BodyDumpConfig{
+		Skipper: nil,
+		Handler: func(e echo.Context, req []byte, resp []byte) {
+			requestBodyLogger.WithLevel(zerolog.DebugLevel).
+				Str("component", "api").
+				Bytes("req", req).
+				Bytes("resp", resp).
+				Msg("")
+		},
 	}))
 
 	h.e.Use(middleware.OapiRequestValidatorWithOptions(swagger, nil))
