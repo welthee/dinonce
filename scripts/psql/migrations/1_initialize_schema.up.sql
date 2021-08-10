@@ -26,7 +26,7 @@ create table if not exists lineages
     primary key (id)
 );
 
-create unique index lineages_ext_id_idx on lineages(ext_id);
+create unique index lineages_ext_id_idx on lineages (ext_id);
 
 create table if not exists tickets
 (
@@ -162,7 +162,8 @@ declare
 begin
     _now := now();
 
-    delete from tickets
+    delete
+    from tickets
     where lineage_id = _lineage_id
       and ext_id = _ticket_ext_id
       and lease_status = 'leased'
@@ -198,8 +199,8 @@ create or replace function close_ticket(
 as
 $$
 declare
-    _now        timestamptz;
-    _newversion bigint;
+    _now                    timestamptz;
+    _newversion             bigint;
     _selected_ticket_ext_id character varying(64);
 begin
     _now := now();
@@ -212,7 +213,18 @@ begin
     returning ext_id into _selected_ticket_ext_id;
 
     if _selected_ticket_ext_id is null then
-        raise exception 'no_such_ticket';
+        select ext_id
+        into _selected_ticket_ext_id
+        from tickets
+        where lineage_id = _lineage_id
+          and ext_id = _ticket_ext_id
+          and lease_status = 'closed';
+
+        if _selected_ticket_ext_id is null then
+            raise exception 'no_such_ticket';
+        end if;
+
+        raise exception 'already_closed';
     end if;
 
     update lineages

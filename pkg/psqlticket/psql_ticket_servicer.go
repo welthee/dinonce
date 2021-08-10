@@ -136,6 +136,11 @@ func (p *Servicer) LeaseTicket(lineageId string, request *api.TicketLeaseRequest
 			case "validation_error":
 				return nil, ticket.ErrInvalidRequest
 			case "max_unused_limit_exceeded":
+				log.Info().
+					Str("lineageId", lineageId).
+					Str("extId", request.ExtId).
+					Msg("can not lease ticket, too many leased tickets in lineage")
+
 				return nil, ticket.ErrTooManyLeasedTickets
 			default:
 				return nil, err
@@ -206,6 +211,11 @@ func (p *Servicer) ReleaseTicket(lineageId string, ticketExtId string) error {
 		if pqErr, ok := err.(*pq.Error); ok {
 			switch pqErr.Message {
 			case "no_such_ticket":
+				log.Info().
+					Str("lineageId", lineageId).
+					Str("extId", ticketExtId).
+					Msg("ticket not found")
+
 				return ticket.ErrNoSuchTicket
 			default:
 				return err
@@ -240,7 +250,19 @@ func (p *Servicer) CloseTicket(lineageId string, ticketExtId string) error {
 		if pqErr, ok := err.(*pq.Error); ok {
 			switch pqErr.Message {
 			case "no_such_ticket":
+				log.Info().
+					Str("lineageId", lineageId).
+					Str("extId", ticketExtId).
+					Msg("ticket not found")
+
 				return ticket.ErrNoSuchTicket
+			case "already_closed":
+				log.Info().
+					Str("lineageId", lineageId).
+					Str("extId", ticketExtId).
+					Msg("not closing ticket, was already closed")
+
+				return nil
 			default:
 				return err
 			}
@@ -283,7 +305,7 @@ func getNonceFromRow(rows *sql.Rows) (*int, error) {
 	return &nonce, nil
 }
 
-func rowClose(rows *sql.Rows){
+func rowClose(rows *sql.Rows) {
 	err := rows.Close()
 	if err != nil {
 		log.Error().Err(err).Msg("can't close rows")

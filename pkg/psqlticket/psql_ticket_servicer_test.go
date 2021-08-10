@@ -16,7 +16,7 @@ import (
 
 const (
 	host     = "localhost"
-	port     = 5433
+	port     = 5432
 	user     = "postgres"
 	password = "postgres"
 	dbname   = "postgres"
@@ -182,6 +182,33 @@ func TestServicer_CloseTicket(t *testing.T) {
 	err = victim.CloseTicket(resp.LineageId, resp.ExtId)
 	if err != nil {
 		t.Errorf("can not close leased ticket %s", err)
+	}
+}
+
+func TestServicer_CloseTicket_Idempotency(t *testing.T) {
+	lineageId := createLineage(t)
+
+	request := &api.TicketLeaseRequest{
+		ExtId: "tx1",
+	}
+
+	resp, err := victim.LeaseTicket(lineageId, request)
+	if err != nil {
+		t.Errorf("can not lease ticket %s", err)
+	}
+
+	if resp.Nonce != 0 {
+		t.Errorf("expected first leased nonce to be 0, got %d", resp.Nonce)
+	}
+
+	err = victim.CloseTicket(resp.LineageId, resp.ExtId)
+	if err != nil {
+		t.Errorf("can not close leased ticket %s", err)
+	}
+
+	err = victim.CloseTicket(resp.LineageId, resp.ExtId)
+	if err != nil {
+		t.Errorf("can not close already closed ticket %s", err)
 	}
 }
 
