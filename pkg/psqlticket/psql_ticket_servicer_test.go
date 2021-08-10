@@ -16,7 +16,7 @@ import (
 
 const (
 	host     = "localhost"
-	port     = 5433
+	port     = 5432
 	user     = "postgres"
 	password = "postgres"
 	dbname   = "postgres"
@@ -106,7 +106,7 @@ func TestServicer_GetLineage(t *testing.T) {
 	}
 }
 
-func TestServicer_GetLineage_NoLineageError(t *testing.T) {
+func TestServicer_GetLineage_NoSuchLineageError(t *testing.T) {
 	id, _ := uuid.NewUUID()
 
 	_, err := victim.GetLineage(id.String())
@@ -119,7 +119,7 @@ func TestServicer_GetLineage_NoLineageError(t *testing.T) {
 	}
 }
 
-func TestServicer_LeaseTicket_SingleTicketOk(t *testing.T) {
+func TestServicer_LeaseTicket(t *testing.T) {
 	lineageId := createLineage(t)
 
 	request := &api.TicketLeaseRequest{
@@ -136,7 +136,7 @@ func TestServicer_LeaseTicket_SingleTicketOk(t *testing.T) {
 	}
 }
 
-func TestServicer_LeaseTicket_SingleTicketIdempotencyWithSameNonce(t *testing.T) {
+func TestServicer_LeaseTicket_WithSameNonce(t *testing.T) {
 	lineageId := createLineage(t)
 
 	request := &api.TicketLeaseRequest{
@@ -163,7 +163,7 @@ func TestServicer_LeaseTicket_SingleTicketIdempotencyWithSameNonce(t *testing.T)
 	}
 }
 
-func TestServicer_LeaseTicket_SingleTicketClose(t *testing.T) {
+func TestServicer_CloseTicket(t *testing.T) {
 	lineageId := createLineage(t)
 
 	request := &api.TicketLeaseRequest{
@@ -185,7 +185,47 @@ func TestServicer_LeaseTicket_SingleTicketClose(t *testing.T) {
 	}
 }
 
-func TestServicer_LeaseTicket_SingleTicketCloseAndAfterCreateValidation(t *testing.T) {
+func TestServicer_CloseTicket_Idempotency(t *testing.T) {
+	lineageId := createLineage(t)
+
+	request := &api.TicketLeaseRequest{
+		ExtId: "tx1",
+	}
+
+	resp, err := victim.LeaseTicket(lineageId, request)
+	if err != nil {
+		t.Errorf("can not lease ticket %s", err)
+	}
+
+	if resp.Nonce != 0 {
+		t.Errorf("expected first leased nonce to be 0, got %d", resp.Nonce)
+	}
+
+	err = victim.CloseTicket(resp.LineageId, resp.ExtId)
+	if err != nil {
+		t.Errorf("can not close leased ticket %s", err)
+	}
+
+	err = victim.CloseTicket(resp.LineageId, resp.ExtId)
+	if err != nil {
+		t.Errorf("can not close already closed ticket %s", err)
+	}
+}
+
+func TestServicer_CloseTicket_NoSuchTicketError(t *testing.T) {
+	lineageId := createLineage(t)
+
+	err := victim.CloseTicket(lineageId, "nonexistent")
+	if err == nil {
+		t.Error("should not be able to close nonexistent ticket")
+	}
+
+	if err != ticket.ErrNoSuchTicket {
+		t.Errorf("expected ErrNoSuchTicket, got %s", err)
+	}
+}
+
+func TestServicer_LeaseTicket_InvalidRequestErrorOnClosedExtId(t *testing.T) {
 	lineageId := createLineage(t)
 
 	request := &api.TicketLeaseRequest{
@@ -216,7 +256,7 @@ func TestServicer_LeaseTicket_SingleTicketCloseAndAfterCreateValidation(t *testi
 	}
 }
 
-func TestServicer_LeaseTicket_MaxLeasedNonceCountValidation(t *testing.T) {
+func TestServicer_LeaseTicket_TooManyLeasedTicketsError(t *testing.T) {
 	lineageId := createLineage(t)
 
 	for i := 0; i < maxLeasedNonceCount; i++ {
@@ -240,7 +280,7 @@ func TestServicer_LeaseTicket_MaxLeasedNonceCountValidation(t *testing.T) {
 	}
 }
 
-func TestServicer_LeaseTicket_ReleasedNonceCorrectReassignment(t *testing.T) {
+func TestServicer_LeaseTicket_ReleasedNonceReassignment(t *testing.T) {
 	lineageId := createLineage(t)
 
 	request := &api.TicketLeaseRequest{
@@ -268,7 +308,20 @@ func TestServicer_LeaseTicket_ReleasedNonceCorrectReassignment(t *testing.T) {
 	}
 }
 
-func TestServicer_GetTicket_LeasedOk(t *testing.T) {
+func TestServicer_ReleaseTicket_NoSuchTicket(t *testing.T) {
+	lineageId := createLineage(t)
+
+	err := victim.ReleaseTicket(lineageId, "nonexistent")
+	if err == nil {
+		t.Error("should not be able to close nonexistent ticket")
+	}
+
+	if err != ticket.ErrNoSuchTicket {
+		t.Errorf("expected ErrNoSuchTicket, got %s", err)
+	}
+}
+
+func TestServicer_GetTicket_Leased(t *testing.T) {
 	lineageId := createLineage(t)
 
 	request := &api.TicketLeaseRequest{
@@ -288,10 +341,9 @@ func TestServicer_GetTicket_LeasedOk(t *testing.T) {
 	if resp.State != "leased" {
 		t.Error("ticket should be in leased state")
 	}
-
 }
 
-func TestServicer_GetTicket_ClosedOk(t *testing.T) {
+func TestServicer_GetTicket_Closed(t *testing.T) {
 	lineageId := createLineage(t)
 
 	request := &api.TicketLeaseRequest{
@@ -316,7 +368,6 @@ func TestServicer_GetTicket_ClosedOk(t *testing.T) {
 	if resp.State != "closed" {
 		t.Error("ticket should be in leased state")
 	}
-
 }
 
 func createLineage(t *testing.T) string {

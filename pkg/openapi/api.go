@@ -129,16 +129,16 @@ func (h *ApiHandler) UpdateTicket(ctx echo.Context, lineageId string, ticketExtI
 	switch req.State {
 	case api.TicketUpdateRequestStateReleased:
 		err = h.servicer.ReleaseTicket(lineageId, ticketExtId)
-		if err != nil {
-			return err
-		}
 	case api.TicketUpdateRequestStateClosed:
-		err := h.servicer.CloseTicket(lineageId, ticketExtId)
-		if err != nil {
-			return err
-		}
+		err = h.servicer.CloseTicket(lineageId, ticketExtId)
 	default:
 		ctx.Error(errors.New("state must be one of:(released,closed)"))
+	}
+	if err != nil {
+		if err == ticket.ErrNoSuchTicket {
+			return ctx.NoContent(http.StatusNotFound)
+		}
+		return err
 	}
 
 	return ctx.NoContent(http.StatusNoContent)
@@ -153,8 +153,8 @@ func (h *ApiHandler) Start() error {
 	logger := lecho.New(
 		os.Stdout,
 		lecho.WithTimestamp(),
+		lecho.WithField("component", "api"),
 	)
-	logger.SetOutput(zerolog.ConsoleWriter{Out: os.Stderr})
 	h.e.Logger = logger
 	h.e.Use(echomiddleware.RequestIDWithConfig(echomiddleware.RequestIDConfig{
 		Generator: func() string {
@@ -168,6 +168,21 @@ func (h *ApiHandler) Start() error {
 			return strings.Contains(userAgent, "kube-probe")
 		},
 		Logger: logger,
+	}))
+
+	requestBodyLogger := zerolog.New(os.Stderr).With().
+		Timestamp().
+		Logger()
+
+	h.e.Use(echomiddleware.BodyDumpWithConfig(echomiddleware.BodyDumpConfig{
+		Skipper: nil,
+		Handler: func(e echo.Context, req []byte, resp []byte) {
+			requestBodyLogger.WithLevel(zerolog.DebugLevel).
+				Str("component", "api").
+				Bytes("req", req).
+				Bytes("resp", resp).
+				Msg("")
+		},
 	}))
 
 	h.e.Use(middleware.OapiRequestValidatorWithOptions(swagger, nil))

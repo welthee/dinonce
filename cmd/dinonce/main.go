@@ -68,7 +68,12 @@ func main() {
 			if err != nil {
 				log.Fatal().Err(err).Msg("can not open db connection")
 			}
-			defer db.Close()
+			defer func(db *sql.DB) {
+				err := db.Close()
+				if err != nil {
+					log.Error().Err(err).Msg("can not close db")
+				}
+			}(db)
 
 			driver, err := postgres.WithInstance(db, &postgres.Config{})
 			if err != nil {
@@ -101,7 +106,12 @@ func main() {
 				log.Fatal().Err(err).Msg("can not acquire lock")
 			}
 
-			defer l.Close()
+			defer func(l *pglock.Lock) {
+				err := l.Close()
+				if err != nil {
+					log.Error().Err(err).Msg("can not close pgLock")
+				}
+			}(l)
 			svc = psqlticket.NewServicer(db)
 		}
 
