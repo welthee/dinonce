@@ -73,6 +73,7 @@ declare
     _nonce                       bigint;
     _current_leased_unused_count smallint;
     _max_leased_unused_count     smallint;
+    _lineage_new_version         bigint;
 begin
     --
     -- being optimistic we try to get a new nonce, assuming:
@@ -100,7 +101,7 @@ begin
         into _nonce;
 
         if _nonce is null then
-            raise exception 'lineage_optimistic_lock';
+            raise exception 'optimistic_lock';
         end if;
 
         delete
@@ -113,18 +114,17 @@ begin
             version              = version + 1
         where id = _lineage_id
           and version = _lineage_version
-          and released_nonce_count > 0;
+          and released_nonce_count > 0
+        returning version into _lineage_new_version;
+
+        if _lineage_new_version is null then
+            raise exception 'optimistic_lock';
+        end if;
     end if;
 
     if _current_leased_unused_count > _max_leased_unused_count then
         raise exception 'max_unused_limit_exceeded';
     end if;
-
-    delete
-    from tickets
-    where lineage_id = _lineage_id
-      and ext_id = _ticket_ext_id
-      and lease_status = 'released';
 
     insert into tickets(lineage_id, ext_id, nonce, leased_at, lease_status)
     values (_lineage_id, _ticket_ext_id, _nonce, now(), 'leased');

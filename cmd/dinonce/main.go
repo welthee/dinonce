@@ -20,10 +20,9 @@ import (
 	"time"
 )
 
-const Version = 1
 const ShutDownTimeout = 30 * time.Second
 
-type PostgreSQLBackendConfig struct {
+type postgreSQLBackendConfig struct {
 	Host         string
 	Port         int
 	User         string
@@ -54,7 +53,7 @@ func main() {
 	switch viper.GetString("backendKind") {
 	case backendKindPostgres:
 		{
-			var backendCfg PostgreSQLBackendConfig
+			var backendCfg postgreSQLBackendConfig
 			if err := viper.UnmarshalKey("backendConfig", &backendCfg); err != nil {
 				log.Fatal().Err(err).Msg("can not construct postgres backend")
 			}
@@ -85,7 +84,7 @@ func main() {
 				log.Fatal().Err(err).Msg("can not create database migrator")
 			}
 
-			if err := m.Migrate(Version); err != nil && err != migrate.ErrNoChange {
+			if err := m.Up(); err != nil && err != migrate.ErrNoChange {
 				log.Fatal().Err(err).Msg("failed to run migrations")
 			}
 
