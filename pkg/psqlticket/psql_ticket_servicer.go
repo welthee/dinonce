@@ -15,24 +15,45 @@ import (
 	"time"
 )
 
-const QueryStringInsertLineage = `insert into lineages(id, ext_id, next_nonce, leased_nonce_count, 
+// Optimistic lock retry constants
+const (
+	optimisticLockMaxRetryAttempts  = 5
+	optimisticLockJitterSleepFactor = 2
+	optimisticLockSleepBase         = 10 * time.Millisecond
+	optimisticLockSleepMax          = 1 * time.Second
+)
+
+// SQL Custom Errors
+const (
+	sqlErrConstraintLineagesExtIdx = "lineages_ext_id_idx"
+
+	sqlErrMessageValidationError        = "validation_error"
+	sqlErrMessageMaxUnusedLimitExceeded = "max_unused_limit_exceeded"
+	sqlErrMessageOptimisticLock         = "optimistic_lock"
+	sqlErrMessageNoSuchTicket           = "no_such_ticket"
+	sqlErrMessageAlreadyClosed          = "already_closed"
+)
+
+// Queries
+const (
+	queryStringInsertLineage = `insert into lineages(id, ext_id, next_nonce, leased_nonce_count, 
 released_nonce_count, max_leased_nonce_count, max_nonce_value, version) 
 values ($1, $2, $3, 0, 0, $4, 9223372036854775807, 0) 
 returning id;`
 
-const QueryStringSelectLineageByExtId = `select id, next_nonce, leased_nonce_count, 
+	queryStringSelectLineageByExtId = `select id, next_nonce, leased_nonce_count, 
 released_nonce_count, max_leased_nonce_count, max_nonce_value, version from lineages where ext_id = $1`
 
-const QueryStringCreateTicket = `select create_ticket($1, $2, $3);`
-const QueryStringReleaseTicket = `select release_ticket($1, $2, $3);`
-const QueryStringCloseTicket = `select close_ticket($1, $2, $3);`
-const QueryStringSelectLineageVersion = `select version from lineages where id = $1;`
-const QueryStringSelectTicket = `select nonce,leased_at, lease_status from tickets where lineage_id = $1 and ext_id = $2`
+	queryStringCreateTicket = `select create_ticket($1, $2, $3);`
 
-const maxOptimisticLockRetryAttempts = 5
-const jitterSleepFactor = 2
-const sleepBase = 10 * time.Millisecond
-const sleepMax = 1 * time.Second
+	queryStringReleaseTicket = `select release_ticket($1, $2, $3);`
+
+	queryStringCloseTicket = `select close_ticket($1, $2, $3);`
+
+	queryStringSelectLineageVersion = `select version from lineages where id = $1;`
+
+	queryStringSelectTicket = `select nonce,leased_at, lease_status from tickets where lineage_id = $1 and ext_id = $2`
+)
 
 type Servicer struct {
 	db *sql.DB
@@ -55,12 +76,12 @@ func (p *Servicer) CreateLineage(request *api.LineageCreationRequest) (*api.Line
 		request.StartLeasingFrom = &zero
 	}
 
-	rows, err := p.db.QueryContext(context.TODO(), QueryStringInsertLineage,
+	rows, err := p.db.QueryContext(context.TODO(), queryStringInsertLineage,
 		aUuid.String(), request.ExtId, request.StartLeasingFrom, request.MaxLeasedNonceCount)
 	if err != nil {
 		if pqErr, ok := err.(*pq.Error); ok {
 			switch pqErr.Constraint {
-			case "lineages_ext_id_idx":
+			case sqlErrConstraintLineagesExtIdx:
 				return nil, ticket.ErrInvalidRequest
 			default:
 				return nil, err
@@ -101,7 +122,7 @@ func (p *Servicer) GetLineage(extId string) (*api.LineageGetResponse, error) {
 	var maxNonceValue int
 	var version int
 
-	err := p.db.QueryRowContext(context.TODO(), QueryStringSelectLineageByExtId, extId).
+	err := p.db.QueryRowContext(context.TODO(), queryStringSelectLineageByExtId, extId).
 		Scan(&id, &nextNonce, &leasedNonceCount,
 			&releasedNonceCount, &maxLeasedNonceCount, &maxNonceValue, &version)
 	if err != nil {
@@ -136,7 +157,7 @@ func (p *Servicer) LeaseTicket(lineageId string, request *api.TicketLeaseRequest
 	shouldRetry := true
 	nonce := 0
 
-	for attempt := 1; shouldRetry && attempt <= maxOptimisticLockRetryAttempts; attempt++ {
+	for attempt := 1; shouldRetry && attempt <= optimisticLockMaxRetryAttempts; attempt++ {
 		nonce, shouldRetry, err = p.tryLeaseTicket(lineageId, request)
 		if err != nil {
 			if shouldRetry {
@@ -145,7 +166,7 @@ func (p *Servicer) LeaseTicket(lineageId string, request *api.TicketLeaseRequest
 					Str("extId", request.ExtId).
 					Msg("retrying to lease ticket")
 
-				jitterSleep(attempt, sleepBase, sleepMax)
+				jitterSleep(attempt, optimisticLockSleepBase, optimisticLockSleepMax)
 			} else {
 				return nil, err
 			}
@@ -173,20 +194,20 @@ func (p *Servicer) tryLeaseTicket(lineageId string, request *api.TicketLeaseRequ
 		return 0, false, err
 	}
 
-	rows, err := p.db.QueryContext(context.TODO(), QueryStringCreateTicket, lineageId, version, request.ExtId)
+	rows, err := p.db.QueryContext(context.TODO(), queryStringCreateTicket, lineageId, version, request.ExtId)
 	if err != nil {
 		if pqErr, ok := err.(*pq.Error); ok {
 			switch pqErr.Message {
-			case "validation_error":
+			case sqlErrMessageValidationError:
 				return 0, false, ticket.ErrInvalidRequest
-			case "max_unused_limit_exceeded":
+			case sqlErrMessageMaxUnusedLimitExceeded:
 				log.Info().
 					Str("lineageId", lineageId).
 					Str("extId", request.ExtId).
 					Msg("can not lease ticket, too many leased tickets in lineage")
 
 				return 0, false, ticket.ErrTooManyLeasedTickets
-			case "lineage_optimistic_lock":
+			case sqlErrMessageOptimisticLock:
 				log.Debug().
 					Str("lineageId", lineageId).
 					Str("extId", request.ExtId).
@@ -214,7 +235,7 @@ func (p *Servicer) GetTicket(lineageId string, ticketExtId string) (*api.TicketL
 	var leasedAtStr string
 	var stateStr string
 
-	err := p.db.QueryRowContext(context.TODO(), QueryStringSelectTicket, lineageId, ticketExtId).
+	err := p.db.QueryRowContext(context.TODO(), queryStringSelectTicket, lineageId, ticketExtId).
 		Scan(&nonce, &leasedAtStr, &stateStr)
 	if err != nil {
 		return nil, err
@@ -243,7 +264,7 @@ func (p *Servicer) ReleaseTicket(lineageId string, ticketExtId string) error {
 	var err error
 	shouldRetry := true
 
-	for attempt := 1; shouldRetry && attempt <= maxOptimisticLockRetryAttempts; attempt++ {
+	for attempt := 1; shouldRetry && attempt <= optimisticLockMaxRetryAttempts; attempt++ {
 		shouldRetry, err = p.tryReleaseTicket(lineageId, ticketExtId)
 		if err != nil {
 			if shouldRetry {
@@ -252,7 +273,7 @@ func (p *Servicer) ReleaseTicket(lineageId string, ticketExtId string) error {
 					Str("extId", ticketExtId).
 					Msg("retrying to release ticket")
 
-				jitterSleep(attempt, sleepBase, sleepMax)
+				jitterSleep(attempt, optimisticLockSleepBase, optimisticLockSleepMax)
 			} else {
 				return err
 			}
@@ -268,18 +289,18 @@ func (p *Servicer) tryReleaseTicket(lineageId string, ticketExtId string) (bool,
 		return false, err
 	}
 
-	rows, err := p.db.QueryContext(context.TODO(), QueryStringReleaseTicket, lineageId, version, ticketExtId)
+	rows, err := p.db.QueryContext(context.TODO(), queryStringReleaseTicket, lineageId, version, ticketExtId)
 	if err != nil {
 		if pqErr, ok := err.(*pq.Error); ok {
 			switch pqErr.Message {
-			case "no_such_ticket":
+			case sqlErrMessageNoSuchTicket:
 				log.Info().
 					Str("lineageId", lineageId).
 					Str("extId", ticketExtId).
 					Msg("ticket not found")
 
 				return false, ticket.ErrNoSuchTicket
-			case "optimistic_lock":
+			case sqlErrMessageOptimisticLock:
 				log.Debug().
 					Str("lineageId", lineageId).
 					Str("extId", ticketExtId).
@@ -312,7 +333,7 @@ func (p *Servicer) CloseTicket(lineageId string, ticketExtId string) error {
 	var err error
 	shouldRetry := true
 
-	for attempt := 1; shouldRetry && attempt <= maxOptimisticLockRetryAttempts; attempt++ {
+	for attempt := 1; shouldRetry && attempt <= optimisticLockMaxRetryAttempts; attempt++ {
 		shouldRetry, err = p.tryCloseTicket(lineageId, ticketExtId)
 		if err != nil {
 			if shouldRetry {
@@ -321,7 +342,7 @@ func (p *Servicer) CloseTicket(lineageId string, ticketExtId string) error {
 					Str("extId", ticketExtId).
 					Msg("retrying to close ticket")
 
-				jitterSleep(attempt, sleepBase, sleepMax)
+				jitterSleep(attempt, optimisticLockSleepBase, optimisticLockSleepMax)
 			} else {
 				return err
 			}
@@ -337,25 +358,25 @@ func (p *Servicer) tryCloseTicket(lineageId string, ticketExtId string) (bool, e
 		return false, err
 	}
 
-	_, err = p.db.ExecContext(context.TODO(), QueryStringCloseTicket, lineageId, version, ticketExtId)
+	_, err = p.db.ExecContext(context.TODO(), queryStringCloseTicket, lineageId, version, ticketExtId)
 	if err != nil {
 		if pqErr, ok := err.(*pq.Error); ok {
 			switch pqErr.Message {
-			case "no_such_ticket":
+			case sqlErrMessageNoSuchTicket:
 				log.Info().
 					Str("lineageId", lineageId).
 					Str("extId", ticketExtId).
 					Msg("ticket not found")
 
 				return false, ticket.ErrNoSuchTicket
-			case "already_closed":
+			case sqlErrMessageAlreadyClosed:
 				log.Info().
 					Str("lineageId", lineageId).
 					Str("extId", ticketExtId).
 					Msg("not closing ticket, was already closed")
 
 				return false, nil
-			case "optimistic_lock":
+			case sqlErrMessageOptimisticLock:
 				log.Debug().
 					Str("lineageId", lineageId).
 					Str("extId", ticketExtId).
@@ -377,7 +398,7 @@ func (p *Servicer) tryCloseTicket(lineageId string, ticketExtId string) (bool, e
 }
 
 func (p *Servicer) getLineageVersion(lineageId string) (int64, error) {
-	rows, err := p.db.QueryContext(context.TODO(), QueryStringSelectLineageVersion, lineageId)
+	rows, err := p.db.QueryContext(context.TODO(), queryStringSelectLineageVersion, lineageId)
 	if err != nil || !rows.Next() {
 		return 0, err
 	}
@@ -414,7 +435,7 @@ func jitterSleep(attempt int, base, max time.Duration) {
 	mx := float64(max)
 	mn := float64(base)
 
-	dur := mn * math.Pow(jitterSleepFactor, float64(attempt))
+	dur := mn * math.Pow(optimisticLockJitterSleepFactor, float64(attempt))
 	if dur > mx {
 		dur = mx
 	}

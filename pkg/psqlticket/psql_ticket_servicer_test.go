@@ -23,7 +23,6 @@ const (
 	dbname   = "postgres"
 )
 
-const Version = 1
 const maxLeasedNonceCount = 64
 
 var victim ticket.Servicer
@@ -48,7 +47,7 @@ func init() {
 		log.Fatal().Err(err).Msg("can not migrate database schema")
 	}
 
-	if err := m.Migrate(Version); err != nil && err != migrate.ErrNoChange {
+	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
 		log.Fatal().Err(err).Msg("failed to run migrations")
 	}
 
