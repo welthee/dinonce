@@ -11,6 +11,7 @@ import (
 	api "github.com/welthee/dinonce/v2/pkg/openapi/generated"
 	"github.com/welthee/dinonce/v2/pkg/psqlticket"
 	"github.com/welthee/dinonce/v2/pkg/ticket"
+	"sync"
 	"testing"
 )
 
@@ -225,6 +226,34 @@ func TestServicer_CloseTicket_NoSuchTicketError(t *testing.T) {
 	}
 }
 
+func TestServicer_CloseTicket_Concurrency(t *testing.T) {
+	lineageId := createLineage(t)
+
+	for i := 0; i < maxLeasedNonceCount; i++ {
+		request := &api.TicketLeaseRequest{
+			ExtId: fmt.Sprintf("tx%d", i),
+		}
+
+		_, err := victim.LeaseTicket(lineageId, request)
+		if err != nil {
+			t.Errorf("can not lease ticket %s", err)
+		}
+	}
+
+	wg := sync.WaitGroup{}
+	for i := 0; i < maxLeasedNonceCount; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			err := victim.CloseTicket(lineageId, fmt.Sprintf("tx%d", i))
+			if err != nil {
+				t.Error("unhandled optimistic lock")
+			}
+		}(i)
+	}
+	wg.Wait()
+}
+
 func TestServicer_LeaseTicket_InvalidRequestErrorOnClosedExtId(t *testing.T) {
 	lineageId := createLineage(t)
 
@@ -280,6 +309,27 @@ func TestServicer_LeaseTicket_TooManyLeasedTicketsError(t *testing.T) {
 	}
 }
 
+func TestServicer_LeaseTicket_Concurrency(t *testing.T) {
+	lineageId := createLineage(t)
+
+	wg := sync.WaitGroup{}
+	for i := 0; i < maxLeasedNonceCount; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			request := &api.TicketLeaseRequest{
+				ExtId: fmt.Sprintf("tx%d", i),
+			}
+
+			_, err := victim.LeaseTicket(lineageId, request)
+			if err != nil {
+				t.Errorf("can not lease ticket %s", err)
+			}
+		}(i)
+	}
+	wg.Wait()
+}
+
 func TestServicer_LeaseTicket_ReleasedNonceReassignment(t *testing.T) {
 	lineageId := createLineage(t)
 
@@ -319,6 +369,36 @@ func TestServicer_ReleaseTicket_NoSuchTicket(t *testing.T) {
 	if err != ticket.ErrNoSuchTicket {
 		t.Errorf("expected ErrNoSuchTicket, got %s", err)
 	}
+}
+
+func TestServicer_ReleaseTicket_Concurrency(t *testing.T) {
+	lineageId := createLineage(t)
+
+	for i := 0; i < maxLeasedNonceCount; i++ {
+		request := &api.TicketLeaseRequest{
+			ExtId: fmt.Sprintf("tx%d", i),
+		}
+
+		_, err := victim.LeaseTicket(lineageId, request)
+		if err != nil {
+			t.Errorf("can not lease ticket %s", err)
+		}
+	}
+
+	wg := sync.WaitGroup{}
+	for i := 0; i < maxLeasedNonceCount; i++ {
+		wg.Add(1)
+
+		go func(i int) {
+			defer wg.Done()
+			err := victim.ReleaseTicket(lineageId, fmt.Sprintf("tx%d", i))
+			if err != nil {
+				t.Error("unhandled optimistic lock")
+			}
+		}(i)
+	}
+	wg.Wait()
+
 }
 
 func TestServicer_GetTicket_Leased(t *testing.T) {
