@@ -6,10 +6,10 @@ import (
 )
 
 var (
-	ErrNoSuchLineage        = errors.New("no such lineage")
-	ErrNoSuchTicket         = errors.New("no such ticket")
-	ErrInvalidRequest       = errors.New("invalid request")
-	ErrTooManyLeasedTickets = errors.New("too many leased tickets")
+	ErrNoSuchLineage             = errors.New("no such lineage")
+	ErrNoSuchTicket              = errors.New("no such ticket")
+	ErrInvalidRequest            = errors.New("invalid request")
+	ErrTooManyLeasedTickets      = errors.New("too many leased tickets")
 	ErrTooManyConcurrentRequests = errors.New("too many concurrent requests")
 )
 

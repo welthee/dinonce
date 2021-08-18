@@ -53,14 +53,15 @@ func (h *ApiHandler) CreateLineage(ctx echo.Context) error {
 
 	resp, err := h.servicer.CreateLineage(req)
 	if err != nil {
-		if err == ticket.ErrInvalidRequest {
+		switch err {
+		case ticket.ErrInvalidRequest:
 			return ctx.JSON(http.StatusBadRequest, api.Error{
 				Code:    ErrorCodeBadRequest,
 				Message: err.Error(),
 			})
+		default:
+			return err
 		}
-
-		return err
 	}
 
 	return ctx.JSON(http.StatusOK, resp)
@@ -69,14 +70,15 @@ func (h *ApiHandler) CreateLineage(ctx echo.Context) error {
 func (h *ApiHandler) GetLineageByExtId(ctx echo.Context, params api.GetLineageByExtIdParams) error {
 	resp, err := h.servicer.GetLineage(params.ExtId)
 	if err != nil {
-		if err == ticket.ErrNoSuchLineage {
+		switch err {
+		case ticket.ErrNoSuchLineage:
 			return ctx.JSON(http.StatusNotFound, api.Error{
 				Code:    ErrorCodeNotFound,
 				Message: err.Error(),
 			})
+		default:
+			return err
 		}
-
-		return err
 	}
 
 	return ctx.JSON(http.StatusOK, resp)
@@ -91,24 +93,25 @@ func (h *ApiHandler) LeaseTicket(ctx echo.Context, lineageId string) error {
 
 	resp, err := h.servicer.LeaseTicket(lineageId, req)
 	if err != nil {
-		if err == ticket.ErrInvalidRequest {
+		switch err {
+		case ticket.ErrInvalidRequest:
 			return ctx.JSON(http.StatusBadRequest, api.Error{
 				Code:    ErrorCodeBadRequest,
 				Message: err.Error(),
 			})
-		} else if err == ticket.ErrTooManyLeasedTickets {
+		case ticket.ErrTooManyLeasedTickets:
 			return ctx.JSON(http.StatusTooManyRequests, api.Error{
 				Code:    ErrorCodeTooManyLeasedTickets,
 				Message: err.Error(),
 			})
-		} else if err == ticket.ErrTooManyConcurrentRequests {
+		case ticket.ErrTooManyConcurrentRequests:
 			return ctx.JSON(http.StatusConflict, api.Error{
 				Code:    ErrTooManyConcurrentRequests,
 				Message: err.Error(),
 			})
+		default:
+			return err
 		}
-
-		return err
 	}
 
 	return ctx.JSON(http.StatusOK, resp)
@@ -117,8 +120,11 @@ func (h *ApiHandler) LeaseTicket(ctx echo.Context, lineageId string) error {
 func (h *ApiHandler) GetTicket(ctx echo.Context, lineageId string, ticketExtId string) error {
 	resp, err := h.servicer.GetTicket(lineageId, ticketExtId)
 	if err != nil {
-		if err == ticket.ErrNoSuchTicket {
+		switch err {
+		case ticket.ErrNoSuchTicket:
 			return ctx.NoContent(http.StatusNotFound)
+		default:
+			return err
 		}
 	}
 
@@ -141,16 +147,17 @@ func (h *ApiHandler) UpdateTicket(ctx echo.Context, lineageId string, ticketExtI
 		ctx.Error(errors.New("state must be one of:(released,closed)"))
 	}
 	if err != nil {
-		if err == ticket.ErrNoSuchTicket {
+		switch err {
+		case ticket.ErrNoSuchTicket:
 			return ctx.NoContent(http.StatusNotFound)
-		} else if err == ticket.ErrTooManyConcurrentRequests {
+		case ticket.ErrTooManyConcurrentRequests:
 			return ctx.JSON(http.StatusConflict, api.Error{
 				Code:    ErrTooManyConcurrentRequests,
 				Message: err.Error(),
 			})
+		default:
+			return err
 		}
-
-		return err
 	}
 
 	return ctx.NoContent(http.StatusNoContent)
