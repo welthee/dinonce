@@ -10,6 +10,9 @@ import (
 	"github.com/rs/zerolog/log"
 	api "github.com/welthee/dinonce/v2/pkg/openapi/generated"
 	"github.com/welthee/dinonce/v2/pkg/ticket"
+	"math"
+	"math/rand"
+	"time"
 )
 
 const QueryStringInsertLineage = `insert into lineages(id, ext_id, next_nonce, leased_nonce_count, 
@@ -25,6 +28,11 @@ const QueryStringReleaseTicket = `select release_ticket($1, $2, $3);`
 const QueryStringCloseTicket = `select close_ticket($1, $2, $3);`
 const QueryStringSelectLineageVersion = `select version from lineages where id = $1;`
 const QueryStringSelectTicket = `select nonce,leased_at, lease_status from tickets where lineage_id = $1 and ext_id = $2`
+
+const maxOptimisticLockRetryAttempts = 5
+const jitterSleepFactor = 2
+const sleepBase = 10 * time.Millisecond
+const sleepMax = 1 * time.Second
 
 type Servicer struct {
 	db *sql.DB
@@ -124,41 +132,30 @@ func (p *Servicer) GetLineage(extId string) (*api.LineageGetResponse, error) {
 }
 
 func (p *Servicer) LeaseTicket(lineageId string, request *api.TicketLeaseRequest) (*api.TicketLeaseResponse, error) {
-	version, err := p.getLineageVersion(lineageId)
-	if err != nil {
-		return nil, err
-	}
+	var err error
+	shouldRetry := true
+	nonce := 0
 
-	rows, err := p.db.QueryContext(context.TODO(), QueryStringCreateTicket, lineageId, version, request.ExtId)
-	if err != nil {
-		if pqErr, ok := err.(*pq.Error); ok {
-			switch pqErr.Message {
-			case "validation_error":
-				return nil, ticket.ErrInvalidRequest
-			case "max_unused_limit_exceeded":
+	for attempt := 1; shouldRetry && attempt <= maxOptimisticLockRetryAttempts; attempt++ {
+		nonce, shouldRetry, err = p.tryLeaseTicket(lineageId, request)
+		if err != nil {
+			if shouldRetry {
 				log.Info().
 					Str("lineageId", lineageId).
 					Str("extId", request.ExtId).
-					Msg("can not lease ticket, too many leased tickets in lineage")
+					Msg("retrying to lease ticket")
 
-				return nil, ticket.ErrTooManyLeasedTickets
-			default:
+				jitterSleep(attempt, sleepBase, sleepMax)
+			} else {
 				return nil, err
 			}
 		}
-		return nil, err
-	}
-	defer rowClose(rows)
-
-	nonce, err := getNonceFromRow(rows)
-	if err != nil {
-		return nil, err
 	}
 
 	resp := &api.TicketLeaseResponse{
 		LineageId: lineageId,
 		ExtId:     request.ExtId,
-		Nonce:     *nonce,
+		Nonce:     nonce,
 	}
 
 	log.Info().
@@ -168,6 +165,48 @@ func (p *Servicer) LeaseTicket(lineageId string, request *api.TicketLeaseRequest
 		Msg("leased ticket")
 
 	return resp, nil
+}
+
+func (p *Servicer) tryLeaseTicket(lineageId string, request *api.TicketLeaseRequest) (int, bool, error) {
+	version, err := p.getLineageVersion(lineageId)
+	if err != nil {
+		return 0, false, err
+	}
+
+	rows, err := p.db.QueryContext(context.TODO(), QueryStringCreateTicket, lineageId, version, request.ExtId)
+	if err != nil {
+		if pqErr, ok := err.(*pq.Error); ok {
+			switch pqErr.Message {
+			case "validation_error":
+				return 0, false, ticket.ErrInvalidRequest
+			case "max_unused_limit_exceeded":
+				log.Info().
+					Str("lineageId", lineageId).
+					Str("extId", request.ExtId).
+					Msg("can not lease ticket, too many leased tickets in lineage")
+
+				return 0, false, ticket.ErrTooManyLeasedTickets
+			case "lineage_optimistic_lock":
+				log.Debug().
+					Str("lineageId", lineageId).
+					Str("extId", request.ExtId).
+					Msg("can not lease ticket due to too many concurrent requests(optimistic lock)")
+
+				return 0, true, ticket.ErrTooManyConcurrentRequests
+			default:
+				return 0, false, err
+			}
+		}
+		return 0, false, err
+	}
+	defer rowClose(rows)
+
+	nonce, err := getNonceFromRow(rows)
+	if err != nil {
+		return 0, false, err
+	}
+
+	return *nonce, false, nil
 }
 
 func (p *Servicer) GetTicket(lineageId string, ticketExtId string) (*api.TicketLeaseResponse, error) {
@@ -201,9 +240,32 @@ func (p *Servicer) GetTicket(lineageId string, ticketExtId string) (*api.TicketL
 }
 
 func (p *Servicer) ReleaseTicket(lineageId string, ticketExtId string) error {
+	var err error
+	shouldRetry := true
+
+	for attempt := 1; shouldRetry && attempt <= maxOptimisticLockRetryAttempts; attempt++ {
+		shouldRetry, err = p.tryReleaseTicket(lineageId, ticketExtId)
+		if err != nil {
+			if shouldRetry {
+				log.Info().
+					Str("lineageId", lineageId).
+					Str("extId", ticketExtId).
+					Msg("retrying to release ticket")
+
+				jitterSleep(attempt, sleepBase, sleepMax)
+			} else {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+func (p *Servicer) tryReleaseTicket(lineageId string, ticketExtId string) (bool, error) {
 	version, err := p.getLineageVersion(lineageId)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	rows, err := p.db.QueryContext(context.TODO(), QueryStringReleaseTicket, lineageId, version, ticketExtId)
@@ -216,18 +278,25 @@ func (p *Servicer) ReleaseTicket(lineageId string, ticketExtId string) error {
 					Str("extId", ticketExtId).
 					Msg("ticket not found")
 
-				return ticket.ErrNoSuchTicket
+				return false, ticket.ErrNoSuchTicket
+			case "optimistic_lock":
+				log.Debug().
+					Str("lineageId", lineageId).
+					Str("extId", ticketExtId).
+					Msg("can not release due to too many concurrent requests(optimistic lock)")
+
+				return true, ticket.ErrTooManyConcurrentRequests
 			default:
-				return err
+				return false, err
 			}
 		}
-		return err
+		return false, err
 	}
 	defer rowClose(rows)
 
 	nonce, err := getNonceFromRow(rows)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	log.Info().
@@ -236,13 +305,36 @@ func (p *Servicer) ReleaseTicket(lineageId string, ticketExtId string) error {
 		Int("nonce", *nonce).
 		Msg("released ticket")
 
-	return nil
+	return false, nil
 }
 
 func (p *Servicer) CloseTicket(lineageId string, ticketExtId string) error {
+	var err error
+	shouldRetry := true
+
+	for attempt := 1; shouldRetry && attempt <= maxOptimisticLockRetryAttempts; attempt++ {
+		shouldRetry, err = p.tryCloseTicket(lineageId, ticketExtId)
+		if err != nil {
+			if shouldRetry {
+				log.Info().
+					Str("lineageId", lineageId).
+					Str("extId", ticketExtId).
+					Msg("retrying to close ticket")
+
+				jitterSleep(attempt, sleepBase, sleepMax)
+			} else {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+func (p *Servicer) tryCloseTicket(lineageId string, ticketExtId string) (bool, error) {
 	version, err := p.getLineageVersion(lineageId)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	_, err = p.db.ExecContext(context.TODO(), QueryStringCloseTicket, lineageId, version, ticketExtId)
@@ -255,27 +347,33 @@ func (p *Servicer) CloseTicket(lineageId string, ticketExtId string) error {
 					Str("extId", ticketExtId).
 					Msg("ticket not found")
 
-				return ticket.ErrNoSuchTicket
+				return false, ticket.ErrNoSuchTicket
 			case "already_closed":
 				log.Info().
 					Str("lineageId", lineageId).
 					Str("extId", ticketExtId).
 					Msg("not closing ticket, was already closed")
 
-				return nil
+				return false, nil
+			case "optimistic_lock":
+				log.Debug().
+					Str("lineageId", lineageId).
+					Str("extId", ticketExtId).
+					Msg("can not close due to too many concurrent requests(optimistic lock)")
+
+				return true, ticket.ErrTooManyConcurrentRequests
 			default:
-				return err
+				return false, err
 			}
 		}
-		return err
+		return false, err
 	}
 
 	log.Info().
 		Str("lineageId", lineageId).
 		Str("extId", ticketExtId).
 		Msg("closed ticket")
-
-	return nil
+	return false, nil
 }
 
 func (p *Servicer) getLineageVersion(lineageId string) (int64, error) {
@@ -310,4 +408,16 @@ func rowClose(rows *sql.Rows) {
 	if err != nil {
 		log.Error().Err(err).Msg("can't close rows")
 	}
+}
+
+func jitterSleep(attempt int, base, max time.Duration) {
+	mx := float64(max)
+	mn := float64(base)
+
+	dur := mn * math.Pow(jitterSleepFactor, float64(attempt))
+	if dur > mx {
+		dur = mx
+	}
+	j := time.Duration(rand.Float64()*(dur-mn) + mn)
+	time.Sleep(j)
 }

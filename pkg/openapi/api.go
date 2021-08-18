@@ -22,6 +22,7 @@ const port = 5010
 const ErrorCodeNotFound = "not_found"
 const ErrorCodeBadRequest = "bad_request"
 const ErrorCodeTooManyLeasedTickets = "too_many_leased_tickets"
+const ErrTooManyConcurrentRequests = "too_many_concurrent_requests"
 
 type ApiHandler struct {
 	e        *echo.Echo
@@ -100,6 +101,11 @@ func (h *ApiHandler) LeaseTicket(ctx echo.Context, lineageId string) error {
 				Code:    ErrorCodeTooManyLeasedTickets,
 				Message: err.Error(),
 			})
+		} else if err == ticket.ErrTooManyConcurrentRequests {
+			return ctx.JSON(http.StatusConflict, api.Error{
+				Code:    ErrTooManyConcurrentRequests,
+				Message: err.Error(),
+			})
 		}
 
 		return err
@@ -137,7 +143,13 @@ func (h *ApiHandler) UpdateTicket(ctx echo.Context, lineageId string, ticketExtI
 	if err != nil {
 		if err == ticket.ErrNoSuchTicket {
 			return ctx.NoContent(http.StatusNotFound)
+		} else if err == ticket.ErrTooManyConcurrentRequests {
+			return ctx.JSON(http.StatusConflict, api.Error{
+				Code:    ErrTooManyConcurrentRequests,
+				Message: err.Error(),
+			})
 		}
+
 		return err
 	}
 
