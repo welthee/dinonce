@@ -480,6 +480,15 @@ func TestServicer_GetTicket_Closed(t *testing.T) {
 	}
 }
 
+func TestServicer_GetTicket_NoSuchTicket(t *testing.T) {
+	lineageId := createLineage(t)
+
+	_, err := victim.GetTicket(lineageId, "nonexistent")
+	if err == nil || err != ticket.ErrNoSuchTicket {
+		t.Errorf("expected ErrNoSuchTicket, got %s", err)
+	}
+}
+
 func createLineage(t *testing.T) string {
 	extIdUUID, _ := uuid.NewUUID()
 	resp, err := victim.CreateLineage(&api.LineageCreationRequest{

@@ -177,6 +177,7 @@ func (p *Servicer) LeaseTicket(lineageId string, request *api.TicketLeaseRequest
 		LineageId: lineageId,
 		ExtId:     request.ExtId,
 		Nonce:     nonce,
+		State:     api.TicketLeaseResponseStateLeased,
 	}
 
 	log.Info().
@@ -234,9 +235,17 @@ func (p *Servicer) GetTicket(lineageId string, ticketExtId string) (*api.TicketL
 	var nonce int
 	var stateStr string
 
-	err := p.db.QueryRowContext(context.TODO(), queryStringSelectTicket, lineageId, ticketExtId).
-		Scan(&nonce, &stateStr)
-	if err != nil {
+	row := p.db.QueryRowContext(context.TODO(), queryStringSelectTicket, lineageId, ticketExtId)
+
+	if err := row.Err(); err != nil {
+		return nil, err
+	}
+
+	if err := row.Scan(&nonce, &stateStr); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, ticket.ErrNoSuchTicket
+		}
+
 		return nil, err
 	}
 
