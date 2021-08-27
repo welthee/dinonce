@@ -183,7 +183,6 @@ components:
         - lineageId
         - extId
         - nonce
-        - leasedAt
         - state
       properties:
         lineageId:
@@ -192,8 +191,6 @@ components:
           type: string
         nonce:
           type: integer
-        leasedAt:
-          type: string
         state:
           type: string
           enum:

@@ -52,7 +52,7 @@ released_nonce_count, max_leased_nonce_count, max_nonce_value, version from line
 
 	queryStringSelectLineageVersion = `select version from lineages where id = $1;`
 
-	queryStringSelectTicket = `select nonce,leased_at, lease_status from tickets where lineage_id = $1 and ext_id = $2`
+	queryStringSelectTicket = `select nonce, lease_status from tickets where lineage_id = $1 and ext_id = $2`
 )
 
 type Servicer struct {
@@ -232,29 +232,24 @@ func (p *Servicer) tryLeaseTicket(lineageId string, request *api.TicketLeaseRequ
 
 func (p *Servicer) GetTicket(lineageId string, ticketExtId string) (*api.TicketLeaseResponse, error) {
 	var nonce int
-	var leasedAtStr string
 	var stateStr string
 
 	err := p.db.QueryRowContext(context.TODO(), queryStringSelectTicket, lineageId, ticketExtId).
-		Scan(&nonce, &leasedAtStr, &stateStr)
+		Scan(&nonce, &stateStr)
 	if err != nil {
 		return nil, err
 	}
 
-	state := api.TicketLeaseResponseState(stateStr)
-
 	resp := &api.TicketLeaseResponse{
 		ExtId:     ticketExtId,
-		LeasedAt:  leasedAtStr,
 		LineageId: lineageId,
 		Nonce:     nonce,
-		State:     state,
+		State:     api.TicketLeaseResponseState(stateStr),
 	}
 
 	log.Info().
 		Str("lineageId", lineageId).
 		Str("extId", ticketExtId).
-		Str("leased_at", leasedAtStr).
 		Msg("retrieved ticket")
 
 	return resp, nil
@@ -402,7 +397,7 @@ func (p *Servicer) getLineageVersion(lineageId string) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	if !rows.Next(){
+	if !rows.Next() {
 		return 0, ticket.ErrNoSuchLineage
 	}
 	defer rowClose(rows)
