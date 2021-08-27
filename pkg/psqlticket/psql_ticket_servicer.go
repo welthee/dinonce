@@ -399,8 +399,11 @@ func (p *Servicer) tryCloseTicket(lineageId string, ticketExtId string) (bool, e
 
 func (p *Servicer) getLineageVersion(lineageId string) (int64, error) {
 	rows, err := p.db.QueryContext(context.TODO(), queryStringSelectLineageVersion, lineageId)
-	if err != nil || !rows.Next() {
+	if err != nil {
 		return 0, err
+	}
+	if !rows.Next(){
+		return 0, ticket.ErrNoSuchLineage
 	}
 	defer rowClose(rows)
 

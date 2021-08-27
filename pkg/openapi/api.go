@@ -94,7 +94,7 @@ func (h *ApiHandler) LeaseTicket(ctx echo.Context, lineageId string) error {
 	resp, err := h.servicer.LeaseTicket(lineageId, req)
 	if err != nil {
 		switch err {
-		case ticket.ErrInvalidRequest:
+		case ticket.ErrInvalidRequest, ticket.ErrNoSuchLineage:
 			return ctx.JSON(http.StatusBadRequest, api.Error{
 				Code:    ErrorCodeBadRequest,
 				Message: err.Error(),
@@ -175,6 +175,9 @@ func (h *ApiHandler) Start() error {
 		lecho.WithField("component", "api"),
 	)
 	h.e.Logger = logger
+
+	h.e.Use(echomiddleware.Recover())
+
 	h.e.Use(echomiddleware.RequestIDWithConfig(echomiddleware.RequestIDConfig{
 		Generator: func() string {
 			return ksuid.New().String()
