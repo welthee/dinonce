@@ -52,7 +52,7 @@ released_nonce_count, max_leased_nonce_count, max_nonce_value, version from line
 
 	queryStringSelectLineageVersion = `select version from lineages where id = $1;`
 
-	queryStringSelectTicket = `select nonce,leased_at, lease_status from tickets where lineage_id = $1 and ext_id = $2`
+	queryStringSelectTicket = `select nonce, lease_status from tickets where lineage_id = $1 and ext_id = $2`
 )
 
 type Servicer struct {
@@ -177,6 +177,7 @@ func (p *Servicer) LeaseTicket(lineageId string, request *api.TicketLeaseRequest
 		LineageId: lineageId,
 		ExtId:     request.ExtId,
 		Nonce:     nonce,
+		State:     api.TicketLeaseResponseStateLeased,
 	}
 
 	log.Info().
@@ -232,29 +233,32 @@ func (p *Servicer) tryLeaseTicket(lineageId string, request *api.TicketLeaseRequ
 
 func (p *Servicer) GetTicket(lineageId string, ticketExtId string) (*api.TicketLeaseResponse, error) {
 	var nonce int
-	var leasedAtStr string
 	var stateStr string
 
-	err := p.db.QueryRowContext(context.TODO(), queryStringSelectTicket, lineageId, ticketExtId).
-		Scan(&nonce, &leasedAtStr, &stateStr)
-	if err != nil {
+	row := p.db.QueryRowContext(context.TODO(), queryStringSelectTicket, lineageId, ticketExtId)
+
+	if err := row.Err(); err != nil {
 		return nil, err
 	}
 
-	state := api.TicketLeaseResponseState(stateStr)
+	if err := row.Scan(&nonce, &stateStr); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, ticket.ErrNoSuchTicket
+		}
+
+		return nil, err
+	}
 
 	resp := &api.TicketLeaseResponse{
 		ExtId:     ticketExtId,
-		LeasedAt:  leasedAtStr,
 		LineageId: lineageId,
 		Nonce:     nonce,
-		State:     state,
+		State:     api.TicketLeaseResponseState(stateStr),
 	}
 
 	log.Info().
 		Str("lineageId", lineageId).
 		Str("extId", ticketExtId).
-		Str("leased_at", leasedAtStr).
 		Msg("retrieved ticket")
 
 	return resp, nil
@@ -399,8 +403,11 @@ func (p *Servicer) tryCloseTicket(lineageId string, ticketExtId string) (bool, e
 
 func (p *Servicer) getLineageVersion(lineageId string) (int64, error) {
 	rows, err := p.db.QueryContext(context.TODO(), queryStringSelectLineageVersion, lineageId)
-	if err != nil || !rows.Next() {
+	if err != nil {
 		return 0, err
+	}
+	if !rows.Next() {
+		return 0, ticket.ErrNoSuchLineage
 	}
 	defer rowClose(rows)
 

@@ -136,6 +136,19 @@ func TestServicer_LeaseTicket(t *testing.T) {
 	}
 }
 
+func TestServicer_LeaseTicket_NoSuchLineage(t *testing.T) {
+	request := &api.TicketLeaseRequest{
+		ExtId: "tx1",
+	}
+
+	lineageId, _ := uuid.NewUUID()
+
+	_, err := victim.LeaseTicket(lineageId.String(), request)
+	if err == nil || err != ticket.ErrNoSuchLineage {
+		t.Errorf("expected ErrNoSuchLineage, got %s", err)
+	}
+}
+
 func TestServicer_LeaseTicket_WithSameNonce(t *testing.T) {
 	lineageId := createLineage(t)
 
@@ -182,6 +195,15 @@ func TestServicer_CloseTicket(t *testing.T) {
 	err = victim.CloseTicket(resp.LineageId, resp.ExtId)
 	if err != nil {
 		t.Errorf("can not close leased ticket %s", err)
+	}
+}
+
+func TestServicer_CloseTicket_NoSuchLineage(t *testing.T) {
+	lineageId, _ := uuid.NewUUID()
+
+	err := victim.CloseTicket(lineageId.String(), "nonexistent")
+	if err == nil || err != ticket.ErrNoSuchLineage {
+		t.Errorf("expected ErrNoSuchLineage, got %s", err)
 	}
 }
 
@@ -357,6 +379,15 @@ func TestServicer_LeaseTicket_ReleasedNonceReassignment(t *testing.T) {
 	}
 }
 
+func TestServicer_ReleaseTicket_NoSuchLineage(t *testing.T) {
+	lineageId, _ := uuid.NewUUID()
+
+	err := victim.ReleaseTicket(lineageId.String(), "nonexistent")
+	if err == nil || err != ticket.ErrNoSuchLineage {
+		t.Errorf("expected ErrNoSuchLineage, got %s", err)
+	}
+}
+
 func TestServicer_ReleaseTicket_NoSuchTicket(t *testing.T) {
 	lineageId := createLineage(t)
 
@@ -446,6 +477,15 @@ func TestServicer_GetTicket_Closed(t *testing.T) {
 
 	if resp.State != "closed" {
 		t.Error("ticket should be in leased state")
+	}
+}
+
+func TestServicer_GetTicket_NoSuchTicket(t *testing.T) {
+	lineageId := createLineage(t)
+
+	_, err := victim.GetTicket(lineageId, "nonexistent")
+	if err == nil || err != ticket.ErrNoSuchTicket {
+		t.Errorf("expected ErrNoSuchTicket, got %s", err)
 	}
 }
 
