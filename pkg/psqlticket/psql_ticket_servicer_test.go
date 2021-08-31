@@ -176,6 +176,32 @@ func TestServicer_LeaseTicket_WithSameNonce(t *testing.T) {
 	}
 }
 
+func TestServicer_LeaseTicket_SameTicketDoubleLeaseWhenLineageFull(t *testing.T) {
+	lineageId := createLineage(t)
+
+	for i := 0; i < maxLeasedNonceCount-1; i++ {
+		request := &api.TicketLeaseRequest{
+			ExtId: fmt.Sprintf("tx%d", i),
+		}
+
+		if _, err := victim.LeaseTicket(lineageId, request); err != nil {
+			t.Errorf("can not lease ticket %s", err)
+		}
+	}
+
+	request := &api.TicketLeaseRequest{
+		ExtId: fmt.Sprintf("test-tx"),
+	}
+
+	if _, err := victim.LeaseTicket(lineageId, request); err != nil {
+		t.Errorf("can not lease last ticket %s", err)
+	}
+
+	if _, err := victim.LeaseTicket(lineageId, request); err != nil {
+		t.Errorf("can not double lease last ticket. should be idempotent. %s", err)
+	}
+}
+
 func TestServicer_CloseTicket(t *testing.T) {
 	lineageId := createLineage(t)
 
