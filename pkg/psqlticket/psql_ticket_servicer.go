@@ -198,6 +198,12 @@ func (p *Servicer) tryLeaseTicket(lineageId string, request *api.TicketLeaseRequ
 	rows, err := p.db.QueryContext(context.TODO(), queryStringCreateTicket, lineageId, version, request.ExtId)
 	if err != nil {
 		if pqErr, ok := err.(*pq.Error); ok {
+			switch pqErr.Code {
+			// 22P02 INVALID TEXT REPRESENTATION
+			case "22P02":
+				return 0, false, ticket.ErrInvalidRequest
+			}
+
 			switch pqErr.Message {
 			case sqlErrMessageValidationError:
 				return 0, false, ticket.ErrInvalidRequest
@@ -238,6 +244,14 @@ func (p *Servicer) GetTicket(lineageId string, ticketExtId string) (*api.TicketL
 	row := p.db.QueryRowContext(context.TODO(), queryStringSelectTicket, lineageId, ticketExtId)
 
 	if err := row.Err(); err != nil {
+		if pqErr, ok := err.(*pq.Error); ok {
+			switch pqErr.Code {
+			// 22P02 INVALID TEXT REPRESENTATION
+			case "22P02":
+				return nil, ticket.ErrInvalidRequest
+			}
+		}
+
 		return nil, err
 	}
 
@@ -296,6 +310,12 @@ func (p *Servicer) tryReleaseTicket(lineageId string, ticketExtId string) (bool,
 	rows, err := p.db.QueryContext(context.TODO(), queryStringReleaseTicket, lineageId, version, ticketExtId)
 	if err != nil {
 		if pqErr, ok := err.(*pq.Error); ok {
+			switch pqErr.Code {
+			// 22P02 INVALID TEXT REPRESENTATION
+			case "22P02":
+				return false, ticket.ErrInvalidRequest
+			}
+
 			switch pqErr.Message {
 			case sqlErrMessageNoSuchTicket:
 				log.Info().
@@ -365,6 +385,12 @@ func (p *Servicer) tryCloseTicket(lineageId string, ticketExtId string) (bool, e
 	_, err = p.db.ExecContext(context.TODO(), queryStringCloseTicket, lineageId, version, ticketExtId)
 	if err != nil {
 		if pqErr, ok := err.(*pq.Error); ok {
+			switch pqErr.Code {
+			// 22P02 INVALID TEXT REPRESENTATION
+			case "22P02":
+				return false, ticket.ErrInvalidRequest
+			}
+
 			switch pqErr.Message {
 			case sqlErrMessageNoSuchTicket:
 				log.Info().
@@ -404,8 +430,16 @@ func (p *Servicer) tryCloseTicket(lineageId string, ticketExtId string) (bool, e
 func (p *Servicer) getLineageVersion(lineageId string) (int64, error) {
 	rows, err := p.db.QueryContext(context.TODO(), queryStringSelectLineageVersion, lineageId)
 	if err != nil {
+		if pqErr, ok := err.(*pq.Error); ok {
+			switch pqErr.Code {
+			// 22P02 INVALID TEXT REPRESENTATION
+			case "22P02":
+				return 0, ticket.ErrInvalidRequest
+			}
+		}
 		return 0, err
 	}
+
 	if !rows.Next() {
 		return 0, ticket.ErrNoSuchLineage
 	}
