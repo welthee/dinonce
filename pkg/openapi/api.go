@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/deepmap/oapi-codegen/pkg/middleware"
+	"github.com/labstack/echo-contrib/prometheus"
 	"github.com/labstack/echo/v4"
 	echomiddleware "github.com/labstack/echo/v4/middleware"
 	"github.com/rs/zerolog"
@@ -123,6 +124,11 @@ func (h *ApiHandler) GetTicket(ctx echo.Context, lineageId string, ticketExtId s
 		switch err {
 		case ticket.ErrNoSuchTicket:
 			return ctx.NoContent(http.StatusNotFound)
+		case ticket.ErrInvalidRequest:
+			return ctx.JSON(http.StatusBadRequest, api.Error{
+				Code:    ErrorCodeBadRequest,
+				Message: err.Error(),
+			})
 		default:
 			return err
 		}
@@ -164,50 +170,14 @@ func (h *ApiHandler) UpdateTicket(ctx echo.Context, lineageId string, ticketExtI
 }
 
 func (h *ApiHandler) Start() error {
-	swagger, err := api.GetSwagger()
-	if err != nil {
+	h.e.Use(echomiddleware.Recover())
+	h.enablePrometheus()
+	h.enableRequestIdMiddleware()
+	h.enableLoggerMiddlewares()
+
+	if err := h.enableOpenApiValidatorMiddleware(); err != nil {
 		return err
 	}
-
-	logger := lecho.New(
-		os.Stdout,
-		lecho.WithTimestamp(),
-		lecho.WithField("component", "api"),
-	)
-	h.e.Logger = logger
-
-	h.e.Use(echomiddleware.Recover())
-
-	h.e.Use(echomiddleware.RequestIDWithConfig(echomiddleware.RequestIDConfig{
-		Generator: func() string {
-			return ksuid.New().String()
-		},
-	}))
-
-	h.e.Use(lecho.Middleware(lecho.Config{
-		Skipper: func(e echo.Context) bool {
-			userAgent := e.Request().UserAgent()
-			return strings.Contains(userAgent, "kube-probe")
-		},
-		Logger: logger,
-	}))
-
-	requestBodyLogger := zerolog.New(os.Stderr).With().
-		Timestamp().
-		Logger()
-
-	h.e.Use(echomiddleware.BodyDumpWithConfig(echomiddleware.BodyDumpConfig{
-		Skipper: nil,
-		Handler: func(e echo.Context, req []byte, resp []byte) {
-			requestBodyLogger.WithLevel(zerolog.DebugLevel).
-				Str("component", "api").
-				Bytes("req", req).
-				Bytes("resp", resp).
-				Msg("")
-		},
-	}))
-
-	h.e.Use(middleware.OapiRequestValidatorWithOptions(swagger, nil))
 
 	api.RegisterHandlers(h.e, h)
 
@@ -219,6 +189,90 @@ func (h *ApiHandler) Stop(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+
+	return nil
+}
+
+func (h *ApiHandler) enablePrometheus() {
+	p := prometheus.NewPrometheus("dinonce", nil)
+	p.Use(h.e)
+}
+
+func (h *ApiHandler) enableRequestIdMiddleware() {
+	h.e.Use(echomiddleware.RequestIDWithConfig(echomiddleware.RequestIDConfig{
+		Skipper: func(e echo.Context) bool {
+			if e.Request().RequestURI == "/metrics" {
+				return true
+			}
+
+			return false
+		},
+		Generator: func() string {
+			return ksuid.New().String()
+		},
+	}))
+}
+
+func (h *ApiHandler) enableLoggerMiddlewares() {
+	logger := lecho.New(
+		os.Stdout,
+		lecho.WithTimestamp(),
+		lecho.WithField("component", "api"),
+	)
+	h.e.Logger = logger
+
+	h.e.Use(lecho.Middleware(lecho.Config{
+		Skipper: func(e echo.Context) bool {
+			if e.Request().RequestURI == "/metrics" {
+				return true
+			}
+
+			userAgent := e.Request().UserAgent()
+			if strings.Contains(userAgent, "kube-probe") {
+				return true
+			}
+
+			return false
+		},
+		Logger: logger,
+	}))
+
+	requestBodyLogger := zerolog.New(os.Stderr).With().
+		Timestamp().
+		Logger()
+
+	h.e.Use(echomiddleware.BodyDumpWithConfig(echomiddleware.BodyDumpConfig{
+		Skipper: func(e echo.Context) bool {
+			if e.Request().RequestURI == "/metrics" {
+				return true
+			}
+
+			return false
+		},
+		Handler: func(e echo.Context, req []byte, resp []byte) {
+			requestBodyLogger.WithLevel(zerolog.DebugLevel).
+				Str("component", "api").
+				Bytes("req", req).
+				Bytes("resp", resp).
+				Msg("")
+		},
+	}))
+}
+
+func (h *ApiHandler) enableOpenApiValidatorMiddleware() error {
+	swagger, err := api.GetSwagger()
+	if err != nil {
+		return err
+	}
+	h.e.Use(middleware.OapiRequestValidatorWithOptions(swagger, &middleware.Options{
+		Skipper: func(e echo.Context) bool {
+			if e.Request().RequestURI == "/metrics" {
+				return true
+			}
+
+			return false
+		},
+	}))
 
 	return nil
 }

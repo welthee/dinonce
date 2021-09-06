@@ -122,6 +122,7 @@ components:
       properties:
         extId:
           type: string
+          pattern: '^[a-zA-Z0-9/-]*'
         maxLeasedNonceCount:
           type: integer
           minimum: 1
