@@ -154,6 +154,11 @@ func (h *ApiHandler) UpdateTicket(ctx echo.Context, lineageId string, ticketExtI
 	}
 	if err != nil {
 		switch err {
+		case ticket.ErrInvalidRequest, ticket.ErrNoSuchLineage:
+			return ctx.JSON(http.StatusBadRequest, api.Error{
+				Code:    ErrorCodeBadRequest,
+				Message: err.Error(),
+			})
 		case ticket.ErrNoSuchTicket:
 			return ctx.NoContent(http.StatusNotFound)
 		case ticket.ErrTooManyConcurrentRequests:

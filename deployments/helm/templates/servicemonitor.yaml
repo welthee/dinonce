@@ -1,0 +1,17 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ .Release.Name }}
+  labels:
+    prometheus: "1"
+    {{- include "dinonce.selectorLabels" . | nindent 4 }}
+spec:
+  namespaceSelector:
+    matchNames:
+      - {{ .Release.Namespace }}
+  selector:
+    matchLabels:
+      {{- include "dinonce.selectorLabels" . | nindent 6 }}
+  endpoints:
+    - port: http
+      path: "/metrics"
