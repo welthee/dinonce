@@ -1,7 +1,6 @@
 package main
 
 import (
-	"cirello.io/pglock"
 	"context"
 	"database/sql"
 	"fmt"
@@ -92,25 +91,6 @@ func main() {
 				return db.PingContext(ctx)
 			}
 
-			lockClient, err := pglock.New(db,
-				pglock.WithHeartbeatFrequency(3*time.Second),
-				pglock.WithCustomTable("lockz"),
-			)
-			if err != nil {
-				log.Fatal().Err(err).Msg("can not create lock client")
-			}
-
-			l, err := lockClient.Acquire("alock")
-			if err != nil {
-				log.Fatal().Err(err).Msg("can not acquire lock")
-			}
-
-			defer func(l *pglock.Lock) {
-				err := l.Close()
-				if err != nil {
-					log.Error().Err(err).Msg("can not close pgLock")
-				}
-			}(l)
 			svc = psqlticket.NewServicer(db)
 		}
 

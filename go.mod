@@ -3,7 +3,6 @@ module github.com/welthee/dinonce/v2
 go 1.16
 
 require (
-	cirello.io/pglock v1.8.0
 	github.com/deepmap/oapi-codegen v1.7.0
 	github.com/etherlabsio/healthcheck v0.0.0-20191224061800-dd3d2fd8c3f6
 	github.com/getkin/kin-openapi v0.62.0
