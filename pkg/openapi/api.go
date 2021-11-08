@@ -248,7 +248,7 @@ func (h *ApiHandler) enableLoggerMiddlewares() {
 			return false
 		},
 		Handler: func(e echo.Context, req []byte, resp []byte) {
-			requestBodyLogger.WithLevel(zerolog.DebugLevel).
+			requestBodyLogger.WithLevel(zerolog.TraceLevel).
 				Str("component", "api").
 				Str("uri", e.Request().RequestURI).
 				Str("method", e.Request().Method).
