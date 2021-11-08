@@ -1,6 +1,7 @@
 package ticket
 
 import (
+	"context"
 	"errors"
 	api "github.com/welthee/dinonce/v2/pkg/openapi/generated"
 )
@@ -14,10 +15,10 @@ var (
 )
 
 type Servicer interface {
-	CreateLineage(request *api.LineageCreationRequest) (*api.LineageCreationResponse, error)
-	GetLineage(extId string) (*api.LineageGetResponse, error)
-	LeaseTicket(lineageId string, request *api.TicketLeaseRequest) (*api.TicketLeaseResponse, error)
-	GetTicket(lineageId string, ticketExtId string) (*api.TicketLeaseResponse, error)
-	ReleaseTicket(lineageId string, ticketExtId string) error
-	CloseTicket(lineageId string, ticketExtId string) error
+	CreateLineage(ctx context.Context, request *api.LineageCreationRequest) (*api.LineageCreationResponse, error)
+	GetLineage(ctx context.Context, extId string) (*api.LineageGetResponse, error)
+	LeaseTicket(ctx context.Context, lineageId string, request *api.TicketLeaseRequest) (*api.TicketLeaseResponse, error)
+	GetTicket(ctx context.Context, lineageId string, ticketExtId string) (*api.TicketLeaseResponse, error)
+	ReleaseTicket(ctx context.Context, lineageId string, ticketExtId string) error
+	CloseTicket(ctx context.Context, lineageId string, ticketExtId string) error
 }
