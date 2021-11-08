@@ -67,8 +67,7 @@ func main() {
 				log.Fatal().Err(err).Msg("can not open db connection")
 			}
 			defer func(db *sql.DB) {
-				err := db.Close()
-				if err != nil {
+				if err := db.Close(); err != nil {
 					log.Error().Err(err).Msg("can not close db")
 				}
 			}(db)
@@ -109,9 +108,10 @@ func main() {
 				opts = append(opts, healthcheck.WithChecker(k, v))
 			}
 			opts = append(opts, healthcheck.WithTimeout(5*time.Second))
-			err := http.ListenAndServe(":5001", healthcheck.Handler(opts...))
 
-			if err != nil && err != http.ErrServerClosed {
+			if err := http.ListenAndServe(":5001", healthcheck.Handler(opts...)); err != nil &&
+				err != http.ErrServerClosed {
+
 				log.Fatal().Err(err).Msg("can not start healthcheck handler")
 			}
 		}()

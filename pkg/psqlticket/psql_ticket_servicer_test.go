@@ -1,23 +1,26 @@
 package psqlticket_test
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/google/uuid"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	api "github.com/welthee/dinonce/v2/pkg/openapi/generated"
 	"github.com/welthee/dinonce/v2/pkg/psqlticket"
 	"github.com/welthee/dinonce/v2/pkg/ticket"
+	"os"
 	"sync"
 	"testing"
 )
 
 const (
 	host     = "localhost"
-	port     = 5432
+	port     = 5433
 	user     = "postgres"
 	password = "postgres"
 	dbname   = "postgres"
@@ -26,8 +29,12 @@ const (
 const maxLeasedNonceCount = 64
 
 var victim ticket.Servicer
+var ctx = context.Background()
 
 func init() {
+	logger := zerolog.New(os.Stdout).Level(zerolog.WarnLevel)
+	ctx = logger.WithContext(ctx)
+
 	psqlInfo := fmt.Sprintf("host=%s port=%d user=%s "+
 		"password=%s dbname=%s sslmode=disable",
 		host, port, user, password, dbname)
@@ -71,12 +78,12 @@ func TestServicer_CreateLineage_DuplicateExtIdFails(t *testing.T) {
 		MaxLeasedNonceCount: maxLeasedNonceCount,
 	}
 
-	_, err := victim.CreateLineage(req)
+	_, err := victim.CreateLineage(ctx, req)
 	if err != nil {
 		t.Errorf("can not create lineage %s", err)
 	}
 
-	_, err = victim.CreateLineage(req)
+	_, err = victim.CreateLineage(ctx, req)
 	if err == nil {
 		t.Errorf("second lineage creation with same extId should fail")
 	}
@@ -88,7 +95,7 @@ func TestServicer_CreateLineage_DuplicateExtIdFails(t *testing.T) {
 func TestServicer_GetLineage(t *testing.T) {
 	extIdUUID, _ := uuid.NewUUID()
 
-	createLineageResponse, err := victim.CreateLineage(&api.LineageCreationRequest{
+	createLineageResponse, err := victim.CreateLineage(ctx, &api.LineageCreationRequest{
 		ExtId:               fmt.Sprintf("test-%s", extIdUUID),
 		MaxLeasedNonceCount: maxLeasedNonceCount,
 	})
@@ -96,7 +103,7 @@ func TestServicer_GetLineage(t *testing.T) {
 		t.Errorf("can not create lineage %s", err)
 	}
 
-	resp, err := victim.GetLineage(createLineageResponse.ExtId)
+	resp, err := victim.GetLineage(ctx, createLineageResponse.ExtId)
 	if err != nil {
 		t.Errorf("can not retrieve lineage %s", err)
 	}
@@ -109,7 +116,7 @@ func TestServicer_GetLineage(t *testing.T) {
 func TestServicer_GetLineage_NoSuchLineageError(t *testing.T) {
 	id, _ := uuid.NewUUID()
 
-	_, err := victim.GetLineage(id.String())
+	_, err := victim.GetLineage(ctx, id.String())
 	if err == nil {
 		t.Errorf("inexistent lineage should retrun error")
 	}
@@ -126,7 +133,7 @@ func TestServicer_LeaseTicket(t *testing.T) {
 		ExtId: "tx1",
 	}
 
-	resp, err := victim.LeaseTicket(lineageId, request)
+	resp, err := victim.LeaseTicket(ctx, lineageId, request)
 	if err != nil {
 		t.Errorf("can not lease ticket %s", err)
 	}
@@ -143,7 +150,7 @@ func TestServicer_LeaseTicket_NoSuchLineage(t *testing.T) {
 
 	lineageId, _ := uuid.NewUUID()
 
-	_, err := victim.LeaseTicket(lineageId.String(), request)
+	_, err := victim.LeaseTicket(ctx, lineageId.String(), request)
 	if err == nil || err != ticket.ErrNoSuchLineage {
 		t.Errorf("expected ErrNoSuchLineage, got %s", err)
 	}
@@ -156,7 +163,7 @@ func TestServicer_LeaseTicket_WithSameNonce(t *testing.T) {
 		ExtId: "tx1",
 	}
 
-	resp, err := victim.LeaseTicket(lineageId, request)
+	resp, err := victim.LeaseTicket(ctx, lineageId, request)
 	if err != nil {
 		t.Errorf("can not lease ticket %s", err)
 	}
@@ -165,7 +172,7 @@ func TestServicer_LeaseTicket_WithSameNonce(t *testing.T) {
 		t.Errorf("expected first leased nonce to be 0, got %d", resp.Nonce)
 	}
 
-	resp, err = victim.LeaseTicket(lineageId, request)
+	resp, err = victim.LeaseTicket(ctx, lineageId, request)
 	if err != nil {
 		t.Errorf("fail on multiple lease operations, should be idempotent")
 	}
@@ -184,7 +191,7 @@ func TestServicer_LeaseTicket_SameTicketDoubleLeaseWhenLineageFull(t *testing.T)
 			ExtId: fmt.Sprintf("tx%d", i),
 		}
 
-		if _, err := victim.LeaseTicket(lineageId, request); err != nil {
+		if _, err := victim.LeaseTicket(ctx, lineageId, request); err != nil {
 			t.Errorf("can not lease ticket %s", err)
 		}
 	}
@@ -193,11 +200,11 @@ func TestServicer_LeaseTicket_SameTicketDoubleLeaseWhenLineageFull(t *testing.T)
 		ExtId: fmt.Sprintf("test-tx"),
 	}
 
-	if _, err := victim.LeaseTicket(lineageId, request); err != nil {
+	if _, err := victim.LeaseTicket(ctx, lineageId, request); err != nil {
 		t.Errorf("can not lease last ticket %s", err)
 	}
 
-	if _, err := victim.LeaseTicket(lineageId, request); err != nil {
+	if _, err := victim.LeaseTicket(ctx, lineageId, request); err != nil {
 		t.Errorf("can not double lease last ticket. should be idempotent. %s", err)
 	}
 }
@@ -209,7 +216,7 @@ func TestServicer_CloseTicket(t *testing.T) {
 		ExtId: "tx1",
 	}
 
-	resp, err := victim.LeaseTicket(lineageId, request)
+	resp, err := victim.LeaseTicket(ctx, lineageId, request)
 	if err != nil {
 		t.Errorf("can not lease ticket %s", err)
 	}
@@ -218,7 +225,7 @@ func TestServicer_CloseTicket(t *testing.T) {
 		t.Errorf("expected first leased nonce to be 0, got %d", resp.Nonce)
 	}
 
-	err = victim.CloseTicket(resp.LineageId, resp.ExtId)
+	err = victim.CloseTicket(ctx, resp.LineageId, resp.ExtId)
 	if err != nil {
 		t.Errorf("can not close leased ticket %s", err)
 	}
@@ -227,7 +234,7 @@ func TestServicer_CloseTicket(t *testing.T) {
 func TestServicer_CloseTicket_NoSuchLineage(t *testing.T) {
 	lineageId, _ := uuid.NewUUID()
 
-	err := victim.CloseTicket(lineageId.String(), "nonexistent")
+	err := victim.CloseTicket(ctx, lineageId.String(), "nonexistent")
 	if err == nil || err != ticket.ErrNoSuchLineage {
 		t.Errorf("expected ErrNoSuchLineage, got %s", err)
 	}
@@ -240,7 +247,7 @@ func TestServicer_CloseTicket_Idempotency(t *testing.T) {
 		ExtId: "tx1",
 	}
 
-	resp, err := victim.LeaseTicket(lineageId, request)
+	resp, err := victim.LeaseTicket(ctx, lineageId, request)
 	if err != nil {
 		t.Errorf("can not lease ticket %s", err)
 	}
@@ -249,12 +256,12 @@ func TestServicer_CloseTicket_Idempotency(t *testing.T) {
 		t.Errorf("expected first leased nonce to be 0, got %d", resp.Nonce)
 	}
 
-	err = victim.CloseTicket(resp.LineageId, resp.ExtId)
+	err = victim.CloseTicket(ctx, resp.LineageId, resp.ExtId)
 	if err != nil {
 		t.Errorf("can not close leased ticket %s", err)
 	}
 
-	err = victim.CloseTicket(resp.LineageId, resp.ExtId)
+	err = victim.CloseTicket(ctx, resp.LineageId, resp.ExtId)
 	if err != nil {
 		t.Errorf("can not close already closed ticket %s", err)
 	}
@@ -263,7 +270,7 @@ func TestServicer_CloseTicket_Idempotency(t *testing.T) {
 func TestServicer_CloseTicket_NoSuchTicketError(t *testing.T) {
 	lineageId := createLineage(t)
 
-	err := victim.CloseTicket(lineageId, "nonexistent")
+	err := victim.CloseTicket(ctx, lineageId, "nonexistent")
 	if err == nil {
 		t.Error("should not be able to close nonexistent ticket")
 	}
@@ -281,7 +288,7 @@ func TestServicer_CloseTicket_Concurrency(t *testing.T) {
 			ExtId: fmt.Sprintf("tx%d", i),
 		}
 
-		_, err := victim.LeaseTicket(lineageId, request)
+		_, err := victim.LeaseTicket(ctx, lineageId, request)
 		if err != nil {
 			t.Errorf("can not lease ticket %s", err)
 		}
@@ -292,7 +299,7 @@ func TestServicer_CloseTicket_Concurrency(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			err := victim.CloseTicket(lineageId, fmt.Sprintf("tx%d", i))
+			err := victim.CloseTicket(ctx, lineageId, fmt.Sprintf("tx%d", i))
 			if err != nil {
 				t.Error("unhandled optimistic lock")
 			}
@@ -308,7 +315,7 @@ func TestServicer_LeaseTicket_InvalidRequestErrorOnClosedExtId(t *testing.T) {
 		ExtId: "tx1",
 	}
 
-	resp, err := victim.LeaseTicket(lineageId, request)
+	resp, err := victim.LeaseTicket(ctx, lineageId, request)
 	if err != nil {
 		t.Errorf("can not lease ticket %s", err)
 	}
@@ -317,12 +324,12 @@ func TestServicer_LeaseTicket_InvalidRequestErrorOnClosedExtId(t *testing.T) {
 		t.Errorf("expected first leased nonce to be 0, got %d", resp.Nonce)
 	}
 
-	err = victim.CloseTicket(resp.LineageId, resp.ExtId)
+	err = victim.CloseTicket(ctx, resp.LineageId, resp.ExtId)
 	if err != nil {
 		t.Errorf("can not close leased ticket %s", err)
 	}
 
-	resp, err = victim.LeaseTicket(lineageId, request)
+	resp, err = victim.LeaseTicket(ctx, lineageId, request)
 	if err == nil {
 		t.Error("should not be able to lease a ticket with a closed ticket's ref")
 	}
@@ -340,7 +347,7 @@ func TestServicer_LeaseTicket_TooManyLeasedTicketsError(t *testing.T) {
 			ExtId: fmt.Sprintf("tx%d", i),
 		}
 
-		_, err := victim.LeaseTicket(lineageId, request)
+		_, err := victim.LeaseTicket(ctx, lineageId, request)
 		if err != nil {
 			t.Errorf("can not lease ticket %s", err)
 		}
@@ -350,7 +357,7 @@ func TestServicer_LeaseTicket_TooManyLeasedTicketsError(t *testing.T) {
 		ExtId: fmt.Sprintf("failing-tx"),
 	}
 
-	_, err := victim.LeaseTicket(lineageId, request)
+	_, err := victim.LeaseTicket(ctx, lineageId, request)
 	if err == nil || err != ticket.ErrTooManyLeasedTickets {
 		t.Errorf("expected error to be ErrTooManyLeasedTickets")
 	}
@@ -368,7 +375,7 @@ func TestServicer_LeaseTicket_Concurrency(t *testing.T) {
 				ExtId: fmt.Sprintf("tx%d", i),
 			}
 
-			_, err := victim.LeaseTicket(lineageId, request)
+			_, err := victim.LeaseTicket(ctx, lineageId, request)
 			if err != nil {
 				t.Errorf("can not lease ticket %s", err)
 			}
@@ -384,18 +391,18 @@ func TestServicer_LeaseTicket_ReleasedNonceReassignment(t *testing.T) {
 		ExtId: "tx1",
 	}
 
-	resp, err := victim.LeaseTicket(lineageId, request)
+	resp, err := victim.LeaseTicket(ctx, lineageId, request)
 	if err != nil {
 		t.Errorf("can not lease initial ticket %s", err)
 	}
 
-	err = victim.ReleaseTicket(lineageId, resp.ExtId)
+	err = victim.ReleaseTicket(ctx, lineageId, resp.ExtId)
 
 	request = &api.TicketLeaseRequest{
 		ExtId: "tx2",
 	}
 
-	resp, err = victim.LeaseTicket(lineageId, request)
+	resp, err = victim.LeaseTicket(ctx, lineageId, request)
 	if err != nil {
 		t.Errorf("can not lease second ticket %s", err)
 	}
@@ -408,7 +415,7 @@ func TestServicer_LeaseTicket_ReleasedNonceReassignment(t *testing.T) {
 func TestServicer_ReleaseTicket_NoSuchLineage(t *testing.T) {
 	lineageId, _ := uuid.NewUUID()
 
-	err := victim.ReleaseTicket(lineageId.String(), "nonexistent")
+	err := victim.ReleaseTicket(ctx, lineageId.String(), "nonexistent")
 	if err == nil || err != ticket.ErrNoSuchLineage {
 		t.Errorf("expected ErrNoSuchLineage, got %s", err)
 	}
@@ -417,7 +424,7 @@ func TestServicer_ReleaseTicket_NoSuchLineage(t *testing.T) {
 func TestServicer_ReleaseTicket_NoSuchTicket(t *testing.T) {
 	lineageId := createLineage(t)
 
-	err := victim.ReleaseTicket(lineageId, "nonexistent")
+	err := victim.ReleaseTicket(ctx, lineageId, "nonexistent")
 	if err == nil {
 		t.Error("should not be able to close nonexistent ticket")
 	}
@@ -435,7 +442,7 @@ func TestServicer_ReleaseTicket_Concurrency(t *testing.T) {
 			ExtId: fmt.Sprintf("tx%d", i),
 		}
 
-		_, err := victim.LeaseTicket(lineageId, request)
+		_, err := victim.LeaseTicket(ctx, lineageId, request)
 		if err != nil {
 			t.Errorf("can not lease ticket %s", err)
 		}
@@ -447,7 +454,7 @@ func TestServicer_ReleaseTicket_Concurrency(t *testing.T) {
 
 		go func(i int) {
 			defer wg.Done()
-			err := victim.ReleaseTicket(lineageId, fmt.Sprintf("tx%d", i))
+			err := victim.ReleaseTicket(ctx, lineageId, fmt.Sprintf("tx%d", i))
 			if err != nil {
 				t.Error("unhandled optimistic lock")
 			}
@@ -464,12 +471,12 @@ func TestServicer_GetTicket_Leased(t *testing.T) {
 		ExtId: "tx1",
 	}
 
-	_, err := victim.LeaseTicket(lineageId, request)
+	_, err := victim.LeaseTicket(ctx, lineageId, request)
 	if err != nil {
 		t.Errorf("can not lease initial ticket %s", err)
 	}
 
-	resp, err := victim.GetTicket(lineageId, request.ExtId)
+	resp, err := victim.GetTicket(ctx, lineageId, request.ExtId)
 	if err != nil {
 		t.Errorf("can not get ticket %s", err)
 	}
@@ -486,17 +493,17 @@ func TestServicer_GetTicket_Closed(t *testing.T) {
 		ExtId: "tx1",
 	}
 
-	_, err := victim.LeaseTicket(lineageId, request)
+	_, err := victim.LeaseTicket(ctx, lineageId, request)
 	if err != nil {
 		t.Errorf("can not lease initial ticket %s", err)
 	}
 
-	err = victim.CloseTicket(lineageId, request.ExtId)
+	err = victim.CloseTicket(ctx, lineageId, request.ExtId)
 	if err != nil {
 		t.Errorf("can not close leased ticket %s", err)
 	}
 
-	resp, err := victim.GetTicket(lineageId, request.ExtId)
+	resp, err := victim.GetTicket(ctx, lineageId, request.ExtId)
 	if err != nil {
 		t.Errorf("can not get ticket %s", err)
 	}
@@ -509,7 +516,7 @@ func TestServicer_GetTicket_Closed(t *testing.T) {
 func TestServicer_GetTicket_NoSuchTicket(t *testing.T) {
 	lineageId := createLineage(t)
 
-	_, err := victim.GetTicket(lineageId, "nonexistent")
+	_, err := victim.GetTicket(ctx, lineageId, "nonexistent")
 	if err == nil || err != ticket.ErrNoSuchTicket {
 		t.Errorf("expected ErrNoSuchTicket, got %s", err)
 	}
@@ -517,7 +524,7 @@ func TestServicer_GetTicket_NoSuchTicket(t *testing.T) {
 
 func createLineage(t *testing.T) string {
 	extIdUUID, _ := uuid.NewUUID()
-	resp, err := victim.CreateLineage(&api.LineageCreationRequest{
+	resp, err := victim.CreateLineage(ctx, &api.LineageCreationRequest{
 		ExtId:               fmt.Sprintf("test-%s", extIdUUID.String()),
 		MaxLeasedNonceCount: maxLeasedNonceCount,
 	})

@@ -9,7 +9,6 @@ import (
 	"github.com/labstack/echo/v4"
 	echomiddleware "github.com/labstack/echo/v4/middleware"
 	"github.com/rs/zerolog"
-	"github.com/segmentio/ksuid"
 	api "github.com/welthee/dinonce/v2/pkg/openapi/generated"
 	"github.com/welthee/dinonce/v2/pkg/ticket"
 	"github.com/ziflex/lecho/v2"
@@ -52,7 +51,7 @@ func (h *ApiHandler) CreateLineage(ctx echo.Context) error {
 		req.StartLeasingFrom = &zero
 	}
 
-	resp, err := h.servicer.CreateLineage(req)
+	resp, err := h.servicer.CreateLineage(ctx.Request().Context(), req)
 	if err != nil {
 		switch err {
 		case ticket.ErrInvalidRequest:
@@ -69,7 +68,7 @@ func (h *ApiHandler) CreateLineage(ctx echo.Context) error {
 }
 
 func (h *ApiHandler) GetLineageByExtId(ctx echo.Context, params api.GetLineageByExtIdParams) error {
-	resp, err := h.servicer.GetLineage(params.ExtId)
+	resp, err := h.servicer.GetLineage(ctx.Request().Context(), params.ExtId)
 	if err != nil {
 		switch err {
 		case ticket.ErrNoSuchLineage:
@@ -92,7 +91,7 @@ func (h *ApiHandler) LeaseTicket(ctx echo.Context, lineageId string) error {
 		return err
 	}
 
-	resp, err := h.servicer.LeaseTicket(lineageId, req)
+	resp, err := h.servicer.LeaseTicket(ctx.Request().Context(), lineageId, req)
 	if err != nil {
 		switch err {
 		case ticket.ErrInvalidRequest, ticket.ErrNoSuchLineage:
@@ -119,7 +118,7 @@ func (h *ApiHandler) LeaseTicket(ctx echo.Context, lineageId string) error {
 }
 
 func (h *ApiHandler) GetTicket(ctx echo.Context, lineageId string, ticketExtId string) error {
-	resp, err := h.servicer.GetTicket(lineageId, ticketExtId)
+	resp, err := h.servicer.GetTicket(ctx.Request().Context(), lineageId, ticketExtId)
 	if err != nil {
 		switch err {
 		case ticket.ErrNoSuchTicket:
@@ -146,9 +145,9 @@ func (h *ApiHandler) UpdateTicket(ctx echo.Context, lineageId string, ticketExtI
 
 	switch req.State {
 	case api.TicketUpdateRequestStateReleased:
-		err = h.servicer.ReleaseTicket(lineageId, ticketExtId)
+		err = h.servicer.ReleaseTicket(ctx.Request().Context(), lineageId, ticketExtId)
 	case api.TicketUpdateRequestStateClosed:
-		err = h.servicer.CloseTicket(lineageId, ticketExtId)
+		err = h.servicer.CloseTicket(ctx.Request().Context(), lineageId, ticketExtId)
 	default:
 		ctx.Error(errors.New("state must be one of:(released,closed)"))
 	}
@@ -177,7 +176,6 @@ func (h *ApiHandler) UpdateTicket(ctx echo.Context, lineageId string, ticketExtI
 func (h *ApiHandler) Start() error {
 	h.e.Use(echomiddleware.Recover())
 	h.enablePrometheus()
-	h.enableRequestIdMiddleware()
 	h.enableLoggerMiddlewares()
 
 	if err := h.enableOpenApiValidatorMiddleware(); err != nil {
@@ -203,7 +201,14 @@ func (h *ApiHandler) enablePrometheus() {
 	p.Use(h.e)
 }
 
-func (h *ApiHandler) enableRequestIdMiddleware() {
+func (h *ApiHandler) enableLoggerMiddlewares() {
+	logger := lecho.New(
+		os.Stdout,
+		lecho.WithTimestamp(),
+	)
+
+	h.e.Logger = logger
+
 	h.e.Use(echomiddleware.RequestIDWithConfig(echomiddleware.RequestIDConfig{
 		Skipper: func(e echo.Context) bool {
 			if e.Request().RequestURI == "/metrics" {
@@ -212,19 +217,7 @@ func (h *ApiHandler) enableRequestIdMiddleware() {
 
 			return false
 		},
-		Generator: func() string {
-			return ksuid.New().String()
-		},
 	}))
-}
-
-func (h *ApiHandler) enableLoggerMiddlewares() {
-	logger := lecho.New(
-		os.Stdout,
-		lecho.WithTimestamp(),
-		lecho.WithField("component", "api"),
-	)
-	h.e.Logger = logger
 
 	h.e.Use(lecho.Middleware(lecho.Config{
 		Skipper: func(e echo.Context) bool {
