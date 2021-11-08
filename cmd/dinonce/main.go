@@ -35,6 +35,8 @@ const postgresMigrationsDir = "file://./scripts/psql/migrations"
 
 func main() {
 	log.Info().Msg("starting ticketing service")
+
+	zerolog.SetGlobalLevel(zerolog.DebugLevel)
 	defaultContextLogger := zerolog.New(os.Stdout)
 	defaultContextLogger.With().Str("logger", "default-context-logger")
 	zerolog.DefaultContextLogger = &defaultContextLogger

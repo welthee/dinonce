@@ -205,6 +205,7 @@ func (h *ApiHandler) enableLoggerMiddlewares() {
 	logger := lecho.New(
 		os.Stdout,
 		lecho.WithTimestamp(),
+		lecho.WithLevel(1), //meaning DEBUG
 	)
 
 	h.e.Logger = logger
