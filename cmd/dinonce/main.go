@@ -8,6 +8,7 @@ import (
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
 	"github.com/welthee/dinonce/v2/pkg/openapi"
@@ -34,6 +35,9 @@ const postgresMigrationsDir = "file://./scripts/psql/migrations"
 
 func main() {
 	log.Info().Msg("starting ticketing service")
+	defaultContextLogger := zerolog.New(os.Stdout)
+	defaultContextLogger.With().Str("logger", "default-context-logger")
+	zerolog.DefaultContextLogger = &defaultContextLogger
 
 	viper.SetConfigName("config")
 	viper.SetConfigType("yaml")
