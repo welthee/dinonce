@@ -11,7 +11,7 @@ import (
 	"github.com/rs/zerolog"
 	api "github.com/welthee/dinonce/v2/pkg/openapi/generated"
 	"github.com/welthee/dinonce/v2/pkg/ticket"
-	"github.com/ziflex/lecho/v2"
+	"github.com/ziflex/lecho/v3"
 	"net/http"
 	"os"
 	"strings"
