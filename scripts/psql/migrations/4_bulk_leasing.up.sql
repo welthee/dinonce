@@ -19,6 +19,9 @@ declare
     _now                             timestamptz;
 begin
     _number_of_tickets = array_length(_ticket_ext_ids, 1);
+    _number_of_used_released_tickets = 0;
+
+    raise log 'Number of tickets: %', _number_of_tickets;
 
     --
     -- being optimistic we try to get a range of new nonce, assuming:
@@ -36,7 +39,9 @@ begin
     returning next_nonce, leased_nonce_count, max_leased_nonce_count into
         _next_nonce, _current_leased_unused_count, _max_leased_unused_count;
 
-    select * from generate_series(_next_nonce - _number_of_tickets - 1, _next_nonce - 1) into _nonces;
+    select array(select * from generate_series(_next_nonce - _number_of_tickets, _next_nonce - 1)) into _nonces;
+
+    raise log 'Nonces: %', _nonces;
 
     if _nonces is null then
         -- either optimistic lock failed or there are released tickets
@@ -73,15 +78,18 @@ begin
             raise exception 'optimistic_lock';
         end if;
     end if;
+
+    raise log 'handling tickets';
+
     _now = now();
     if _number_of_used_released_tickets < _number_of_tickets then
-        for i in 0.. _number_of_tickets
+        for i in array_lower(_ticket_ext_ids,1)..array_upper(_ticket_ext_ids, 1)
             loop
+                raise log 'ticket number %', i;
                 insert into tickets(lineage_id, ext_id, nonce, leased_at, lease_status)
                 values (_lineage_id, _ticket_ext_ids[i], _nonces[i], _now, 'leased');
             end loop;
     end if;
-
 
     if _current_leased_unused_count > _max_leased_unused_count then
         raise exception 'max_unused_limit_exceeded';

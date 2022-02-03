@@ -60,7 +60,6 @@ type Servicer struct {
 	db *sql.DB
 }
 
-
 func NewServicer(db *sql.DB) ticket.Servicer {
 	return &Servicer{
 		db: db,
@@ -188,7 +187,7 @@ func (p *Servicer) LeaseTickets(ctx context.Context, lineageId string, requests 
 func (p *Servicer) LeaseTicket(ctx context.Context, lineageId string, request *api.TicketLeaseRequest) (*api.TicketLeaseResponse, error) {
 	var err error
 	shouldRetry := true
-	nonce := 0
+	var nonce int64 = 0
 
 	for attempt := 1; shouldRetry && attempt <= optimisticLockMaxRetryAttempts; attempt++ {
 		nonce, shouldRetry, err = p.tryLeaseTicket(ctx, lineageId, request)
@@ -209,7 +208,7 @@ func (p *Servicer) LeaseTicket(ctx context.Context, lineageId string, request *a
 	resp := &api.TicketLeaseResponse{
 		LineageId: lineageId,
 		ExtId:     request.ExtId,
-		Nonce:     nonce,
+		Nonce:     int(nonce),
 		State:     api.TicketLeaseResponseStateLeased,
 	}
 
@@ -222,7 +221,7 @@ func (p *Servicer) LeaseTicket(ctx context.Context, lineageId string, request *a
 	return resp, nil
 }
 
-func (p *Servicer) tryLeaseTicket(ctx context.Context, lineageId string, request *api.TicketLeaseRequest) (int, bool, error) {
+func (p *Servicer) tryLeaseTicket(ctx context.Context, lineageId string, request *api.TicketLeaseRequest) (int64, bool, error) {
 	version, err := p.getLineageVersion(ctx, lineageId)
 	if err != nil {
 		return 0, false, err
@@ -390,7 +389,7 @@ func (p *Servicer) tryReleaseTicket(ctx context.Context, lineageId string, ticke
 	log.Ctx(ctx).Info().
 		Str("lineageId", lineageId).
 		Str("extId", ticketExtId).
-		Int("nonce", *nonce).
+		Int64("nonce", *nonce).
 		Msg("released ticket")
 
 	return false, nil
@@ -496,8 +495,8 @@ func (p *Servicer) getLineageVersion(ctx context.Context, lineageId string) (int
 	return v, nil
 }
 
-func getNonceFromRow(rows *sql.Rows) (*int, error) {
-	var nonces []int
+func getNonceFromRow(rows *sql.Rows) (*int64, error) {
+	var nonces []int64
 	if !rows.Next() {
 		return nil, errors.New("expected nonce in result set")
 	}

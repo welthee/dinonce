@@ -55,6 +55,10 @@ func init() {
 		log.Fatal().Err(err).Msg("can not migrate database schema")
 	}
 
+	if err := m.Down(); err != nil && err != migrate.ErrNoChange {
+		log.Fatal().Err(err).Msg("failed to reset database")
+	}
+
 	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
 		log.Fatal().Err(err).Msg("failed to run migrations")
 	}
