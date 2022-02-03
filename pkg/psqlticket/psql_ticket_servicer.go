@@ -4,15 +4,16 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"math"
+	"math/rand"
+	"time"
+
 	"github.com/google/uuid"
 	"github.com/lib/pq"
 	_ "github.com/lib/pq"
 	"github.com/rs/zerolog/log"
 	api "github.com/welthee/dinonce/v2/pkg/openapi/generated"
 	"github.com/welthee/dinonce/v2/pkg/ticket"
-	"math"
-	"math/rand"
-	"time"
 )
 
 // Optimistic lock retry constants
@@ -58,6 +59,7 @@ released_nonce_count, max_leased_nonce_count, max_nonce_value, version from line
 type Servicer struct {
 	db *sql.DB
 }
+
 
 func NewServicer(db *sql.DB) ticket.Servicer {
 	return &Servicer{
@@ -154,6 +156,35 @@ func (p *Servicer) GetLineage(ctx context.Context, extId string) (*api.LineageGe
 	return resp, nil
 }
 
+func (p *Servicer) LeaseTickets(ctx context.Context, lineageId string, requests *api.TicketBulkLeaseRequest) (*api.TicketLeaseResponseList, error) {
+	responseList := api.TicketLeaseResponseList{Leases: &[]api.TicketLeaseResponse{}}
+	var hasFailedToLeaseTicket bool
+
+	for _, extID := range requests.ExtIds {
+		resp, err := p.LeaseTicket(ctx, lineageId, &api.TicketLeaseRequest{ExtId: extID})
+		if err != nil {
+			err := p.ReleaseTicket(ctx, lineageId, extID)
+			if err != nil {
+				log.Ctx(ctx).Error().Err(err).Msg("")
+			}
+			hasFailedToLeaseTicket = true
+			break
+		}
+		*responseList.Leases = append(*responseList.Leases, *resp)
+	}
+
+	if hasFailedToLeaseTicket {
+		for _, response := range *responseList.Leases {
+			err := p.ReleaseTicket(ctx, lineageId, response.ExtId)
+			if err != nil {
+				log.Ctx(ctx).Error().Err(err).Msg("")
+			}
+		}
+	}
+
+	return &responseList, nil
+}
+
 func (p *Servicer) LeaseTicket(ctx context.Context, lineageId string, request *api.TicketLeaseRequest) (*api.TicketLeaseResponse, error) {
 	var err error
 	shouldRetry := true
@@ -197,12 +228,22 @@ func (p *Servicer) tryLeaseTicket(ctx context.Context, lineageId string, request
 		return 0, false, err
 	}
 
-	rows, err := p.db.QueryContext(ctx, queryStringCreateTicket, lineageId, version, request.ExtId)
+	array := pq.Array([1]string{request.ExtId})
+
+	// select create_ticket('5747600c-c493-456c-bec9-cad43eb90b8a', 55, {"foo"});
+
+	rows, err := p.db.QueryContext(ctx, queryStringCreateTicket, lineageId, version, array)
 	if err != nil {
 		if pqErr, ok := err.(*pq.Error); ok {
 			switch pqErr.Code {
 			// 22P02 INVALID TEXT REPRESENTATION
 			case "22P02":
+				log.Ctx(ctx).Error().
+					Str("lineageId", lineageId).
+					Str("extId", request.ExtId).
+					Str("pqErr Where", pqErr.Where).
+					Err(err).
+					Msg("")
 				return 0, false, ticket.ErrInvalidRequest
 			}
 
@@ -456,15 +497,15 @@ func (p *Servicer) getLineageVersion(ctx context.Context, lineageId string) (int
 }
 
 func getNonceFromRow(rows *sql.Rows) (*int, error) {
-	var nonce int
+	var nonces []int
 	if !rows.Next() {
 		return nil, errors.New("expected nonce in result set")
 	}
-	if err := rows.Scan(&nonce); err != nil {
+	if err := rows.Scan(pq.Array(&nonces)); err != nil {
 		return nil, err
 	}
 
-	return &nonce, nil
+	return &nonces[0], nil
 }
 
 func rowClose(ctx context.Context, rows *sql.Rows) {

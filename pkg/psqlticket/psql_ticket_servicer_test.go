@@ -4,6 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"os"
+	"sync"
+	"testing"
+
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
@@ -13,9 +17,6 @@ import (
 	api "github.com/welthee/dinonce/v2/pkg/openapi/generated"
 	"github.com/welthee/dinonce/v2/pkg/psqlticket"
 	"github.com/welthee/dinonce/v2/pkg/ticket"
-	"os"
-	"sync"
-	"testing"
 )
 
 const (
@@ -123,6 +124,28 @@ func TestServicer_GetLineage_NoSuchLineageError(t *testing.T) {
 
 	if err != ticket.ErrNoSuchLineage {
 		t.Errorf("expected NoSuchLineage error, got %s", err)
+	}
+}
+
+func TestServicer_LeasesTicket(t *testing.T) {
+	lineageId := createLineage(t)
+
+	request := &api.TicketBulkLeaseRequest{
+		ExtIds: []string{"tx1", "tx2", "tx3"},
+	}
+
+	resp, err := victim.LeaseTickets(ctx, lineageId, request)
+	if err != nil {
+		t.Errorf("can not lease ticket %s", err)
+	}
+
+	for i, lease := range *resp.Leases {
+		if i == 0 && lease.Nonce != 0 {
+			t.Errorf("expected first leased nonce to be 0, got %d", lease.Nonce)
+		}
+		if i != 0 && lease.Nonce == 0 {
+			t.Errorf("expected leased nonce to not be 0, got %d", lease.Nonce)
+		}
 	}
 }
 

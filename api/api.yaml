@@ -38,6 +38,8 @@ paths:
 
   /lineages/{lineageId}/tickets:
     post:
+      summary: Lease tickets
+      description: Lease one or many tickets
       operationId: leaseTicket
       parameters:
         - name: lineageId
@@ -50,14 +52,16 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/TicketLeaseRequest"
+              oneOf:
+                - $ref: "#/components/schemas/TicketBulkLeaseRequest"
+                - $ref: "#/components/schemas/TicketLeaseRequest"
       responses:
         '200':
           description: Ticket lease acquired
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/TicketLeaseResponse"
+                $ref: "#/components/schemas/TicketLeaseResponseList"
         '400':
           description: bad request
           content:
@@ -170,6 +174,16 @@ components:
         maxNonceValue:
           type: integer
 
+    TicketBulkLeaseRequest:
+      type: object
+      required:
+        - extIds
+      properties:
+        extIds:
+          type: array
+          items:
+            type: string
+
     TicketLeaseRequest:
       type: object
       required:
@@ -177,6 +191,14 @@ components:
       properties:
         extId:
           type: string
+
+    TicketLeaseResponseList:
+      type: object
+      properties:
+        leases:
+          type: array
+          items:
+            $ref: "#/components/schemas/TicketLeaseResponse"
 
     TicketLeaseResponse:
       type: object

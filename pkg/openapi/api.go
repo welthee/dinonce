@@ -4,17 +4,19 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
+	"os"
+	"strings"
+
 	"github.com/deepmap/oapi-codegen/pkg/middleware"
 	"github.com/labstack/echo-contrib/prometheus"
 	"github.com/labstack/echo/v4"
 	echomiddleware "github.com/labstack/echo/v4/middleware"
 	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	api "github.com/welthee/dinonce/v2/pkg/openapi/generated"
 	"github.com/welthee/dinonce/v2/pkg/ticket"
 	"github.com/ziflex/lecho/v3"
-	"net/http"
-	"os"
-	"strings"
 )
 
 const port = 5010
@@ -24,12 +26,14 @@ const ErrorCodeBadRequest = "bad_request"
 const ErrorCodeTooManyLeasedTickets = "too_many_leased_tickets"
 const ErrTooManyConcurrentRequests = "too_many_concurrent_requests"
 
+
 type ApiHandler struct {
 	e        *echo.Echo
 	servicer ticket.Servicer
 }
 
 func NewApiHandler(servicer ticket.Servicer) *ApiHandler {
+	var _ api.ServerInterface = &ApiHandler{}
 	e := echo.New()
 	e.HideBanner = true
 
@@ -85,13 +89,12 @@ func (h *ApiHandler) GetLineageByExtId(ctx echo.Context, params api.GetLineageBy
 }
 
 func (h *ApiHandler) LeaseTicket(ctx echo.Context, lineageId string) error {
-	req := &api.TicketLeaseRequest{}
-	err := ctx.Bind(req)
+	bulkRequest, err := h.getLeaseTicketRequests(ctx)
 	if err != nil {
 		return err
 	}
 
-	resp, err := h.servicer.LeaseTicket(ctx.Request().Context(), lineageId, req)
+	resp, err := h.servicer.LeaseTickets(ctx.Request().Context(), lineageId, bulkRequest)
 	if err != nil {
 		switch err {
 		case ticket.ErrInvalidRequest, ticket.ErrNoSuchLineage:
@@ -115,6 +118,29 @@ func (h *ApiHandler) LeaseTicket(ctx echo.Context, lineageId string) error {
 	}
 
 	return ctx.JSON(http.StatusOK, resp)
+}
+
+func (h *ApiHandler) getLeaseTicketRequests(ctx echo.Context) (*api.TicketBulkLeaseRequest, error) {
+	requestOne := &api.TicketLeaseRequest{}
+	requestMany := &api.TicketBulkLeaseRequest{}
+
+	errReqOne := ctx.Bind(requestOne)
+	errReqMany := ctx.Bind(requestMany)
+
+	if errReqOne == nil {
+		return &api.TicketBulkLeaseRequest{ExtIds: []string{requestOne.ExtId}}, nil
+	}
+
+	if errReqMany == nil {
+		var requests *api.TicketBulkLeaseRequest
+		for _, extId := range requestMany.ExtIds {
+			requests.ExtIds = append(requests.ExtIds, extId)
+		}
+		return requests, nil
+	}
+
+	log.Ctx(ctx.Request().Context()).Error().Err(errReqOne).Err(errReqMany).Msg("")
+	return nil, errors.New("failed to bind context body")
 }
 
 func (h *ApiHandler) GetTicket(ctx echo.Context, lineageId string, ticketExtId string) error {
