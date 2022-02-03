@@ -271,7 +271,7 @@ func (p *Servicer) tryLeaseTicket(ctx context.Context, lineageId string, request
 	}
 	defer rowClose(ctx, rows)
 
-	nonce, err := getNonceFromRow(rows)
+	nonce, err := getNoncesFromRow(rows)
 	if err != nil {
 		return 0, false, err
 	}
@@ -389,7 +389,7 @@ func (p *Servicer) tryReleaseTicket(ctx context.Context, lineageId string, ticke
 	log.Ctx(ctx).Info().
 		Str("lineageId", lineageId).
 		Str("extId", ticketExtId).
-		Int64("nonce", *nonce).
+		Int("nonce", *nonce).
 		Msg("released ticket")
 
 	return false, nil
@@ -495,7 +495,19 @@ func (p *Servicer) getLineageVersion(ctx context.Context, lineageId string) (int
 	return v, nil
 }
 
-func getNonceFromRow(rows *sql.Rows) (*int64, error) {
+func getNonceFromRow(rows *sql.Rows) (*int, error) {
+	var nonce int
+	if !rows.Next() {
+		return nil, errors.New("expected nonce in result set")
+	}
+	if err := rows.Scan(&nonce); err != nil {
+		return nil, err
+	}
+
+	return &nonce, nil
+}
+
+func getNoncesFromRow(rows *sql.Rows) (*int64, error) {
 	var nonces []int64
 	if !rows.Next() {
 		return nil, errors.New("expected nonce in result set")

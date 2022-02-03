@@ -21,8 +21,6 @@ begin
     _number_of_tickets = array_length(_ticket_ext_ids, 1);
     _number_of_used_released_tickets = 0;
 
-    raise log 'Number of tickets: %', _number_of_tickets;
-
     --
     -- being optimistic we try to get a range of new nonce, assuming:
     -- * lineage_version has not changed
@@ -41,25 +39,25 @@ begin
 
     select array(select * from generate_series(_next_nonce - _number_of_tickets, _next_nonce - 1)) into _nonces;
 
-    raise log 'Nonces: %', _nonces;
-
-    if _nonces is null then
+    if array_length(_nonces, 1) is null then
         -- either optimistic lock failed or there are released tickets
-        select nonce
-        from released_tickets
-        where lineage_id = _lineage_id
-        order by lineage_id, nonce
-        limit _number_of_tickets
+        select array(
+                       select nonce
+                       from released_tickets
+                       where lineage_id = _lineage_id
+                       order by lineage_id, nonce
+                       limit _number_of_tickets
+                   )
         into _nonces;
 
-        if _nonces is null then
+        if array_length(_nonces, 1) is null then
             raise exception 'optimistic_lock';
         end if;
 
         delete
         from released_tickets
         where lineage_id = _lineage_id
-          and nonce in (_nonces);
+          and nonce in (select(unnest(_nonces)));
 
         _number_of_used_released_tickets = array_length(_nonces, 1);
 
@@ -71,15 +69,14 @@ begin
             version              = version + 1
         where id = _lineage_id
           and version = _lineage_version
-          and released_nonce_count > _number_of_used_released_tickets
-        returning version, leased_nonce_count, max_leased_nonce_count into _lineage_new_version, _current_leased_unused_count, _max_leased_unused_count;
+          and released_nonce_count >= _number_of_used_released_tickets
+        returning version, leased_nonce_count, max_leased_nonce_count
+            into _lineage_new_version, _current_leased_unused_count, _max_leased_unused_count;
 
         if _lineage_new_version is null then
             raise exception 'optimistic_lock';
         end if;
     end if;
-
-    raise log 'handling tickets';
 
     _now = now();
     if _number_of_used_released_tickets < _number_of_tickets then
@@ -98,14 +95,16 @@ begin
     return _nonces;
 exception
     when unique_violation then
-        select nonce
-        from tickets
-        where lineage_id = _lineage_id
-          and ext_id in (_ticket_ext_ids)
-          and lease_status = 'leased'
+        select array(
+                       select nonce
+                       from tickets
+                       where lineage_id = _lineage_id
+                         and ext_id in (select(unnest(_ticket_ext_ids)))
+                         and lease_status = 'leased'
+                   )
         into _nonces;
 
-        if _nonces is null then
+        if array_length(_nonces, 1) is null then
             raise exception 'validation_error';
         end if;
 

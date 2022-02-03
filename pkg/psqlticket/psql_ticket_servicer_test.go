@@ -483,7 +483,7 @@ func TestServicer_ReleaseTicket_Concurrency(t *testing.T) {
 			defer wg.Done()
 			err := victim.ReleaseTicket(ctx, lineageId, fmt.Sprintf("tx%d", i))
 			if err != nil {
-				t.Error("unhandled optimistic lock")
+				t.Errorf("unhandled optimistic lock %s", err)
 			}
 		}(i)
 	}
