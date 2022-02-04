@@ -13,13 +13,15 @@ declare
     _number_of_existing_tickets      integer;
     _number_of_used_released_tickets smallint;
     _nonces                          bigint[];
+    _existing_nonces                 bigint[];
     _new_nonces                      bigint[];
     _current_leased_unused_count     smallint;
     _max_leased_unused_count         smallint;
     _lineage_new_version             bigint;
     _next_nonce                      bigint;
     _now                             timestamptz;
-    _ticket_with_extid_exists        integer;
+    _i_nonce                         integer;
+    _i_new_nonces                    integer;
     _temp_table_name                 text;
 begin
     _number_of_tickets = array_length(_ticket_ext_ids, 1);
@@ -69,18 +71,18 @@ begin
                        order by lineage_id, nonce
                        limit _number_of_tickets
                    )
-        into _nonces;
+        into _existing_nonces;
 
-        if array_length(_nonces, 1) is null then
+        if array_length(_existing_nonces, 1) is null then
             raise exception 'optimistic_lock';
         end if;
 
         delete
         from released_tickets
         where lineage_id = _lineage_id
-          and nonce in (select(unnest(_nonces)));
+          and nonce in (select(unnest(_existing_nonces)));
 
-        _number_of_used_released_tickets = array_length(_nonces, 1);
+        _number_of_used_released_tickets = array_length(_existing_nonces, 1);
 
         update
             lineages
@@ -101,36 +103,39 @@ begin
 
     end if;
 
-    -- tx 1 leased, tx2 - new, tx 3- closed => fail
-    -- TODO - if at least one is closed, throw error
-
     select array(select *
                  from generate_series(_next_nonce - (_number_of_tickets - _number_of_used_released_tickets),
                                       _next_nonce - 1))
     into _new_nonces;
-    _nonces = array_cat(_nonces, _new_nonces);
-    raise log 'final nonces %', _nonces;
 
     _now = now();
+    _i_new_nonces = array_lower(_new_nonces, 1);
     for i in array_lower(_ticket_ext_ids, 1)..array_upper(_ticket_ext_ids, 1)
         loop
-            select count(*)
+            select nonce
             from _temp_table_name
             where ext_id = _ticket_ext_ids[i]
-            into _ticket_with_extid_exists;
+            into _i_nonce;
 
+            raise log 'ticket number %', i;
             raise log 'ticket extid %', _ticket_ext_ids[i];
             raise log 'ticket nonce %', _nonces[i];
-            raise log 'ticket exists number %', _ticket_with_extid_exists;
+            raise log 'ticket exists number %', _i_nonce;
 
-            if _ticket_with_extid_exists != 0 then
+            if _i_nonce is not null then
+                _nonces[i] = _i_nonce;
                 continue;
             end if;
 
-            raise log 'ticket number %', i;
-            insert into tickets(lineage_id, ext_id, nonce, leased_at, lease_status)
-            values (_lineage_id, _ticket_ext_ids[i], _nonces[i], _now, 'leased');
+            insert into tickets
+                (lineage_id, ext_id, nonce, leased_at, lease_status)
+            values (_lineage_id, _ticket_ext_ids[i], _new_nonces[_i_new_nonces], _now, 'leased');
+
+            _nonces[i] = _new_nonces[_i_new_nonces];
+            _i_new_nonces = _i_new_nonces + 1;
         end loop;
+
+    raise log 'final final nonces %', _nonces;
 
     if _current_leased_unused_count > _max_leased_unused_count then
         raise exception 'max_unused_limit_exceeded';
