@@ -18,7 +18,6 @@ var (
 type Servicer interface {
 	CreateLineage(ctx context.Context, request *api.LineageCreationRequest) (*api.LineageCreationResponse, error)
 	GetLineage(ctx context.Context, extId string) (*api.LineageGetResponse, error)
-	LeaseTickets(ctx context.Context, lineageId string, requests *api.TicketBulkLeaseRequest) (*api.TicketLeaseResponseList, error)
 	LeaseTicket(ctx context.Context, lineageId string, request *api.TicketLeaseRequest) (*api.TicketLeaseResponse, error)
 	GetTicket(ctx context.Context, lineageId string, ticketExtId string) (*api.TicketLeaseResponse, error)
 	ReleaseTicket(ctx context.Context, lineageId string, ticketExtId string) error

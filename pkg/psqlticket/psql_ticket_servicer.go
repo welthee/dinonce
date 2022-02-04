@@ -155,47 +155,18 @@ func (p *Servicer) GetLineage(ctx context.Context, extId string) (*api.LineageGe
 	return resp, nil
 }
 
-func (p *Servicer) LeaseTickets(ctx context.Context, lineageId string, requests *api.TicketBulkLeaseRequest) (*api.TicketLeaseResponseList, error) {
-	responseList := api.TicketLeaseResponseList{Leases: &[]api.TicketLeaseResponse{}}
-	var hasFailedToLeaseTicket bool
-
-	for _, extID := range requests.ExtIds {
-		resp, err := p.LeaseTicket(ctx, lineageId, &api.TicketLeaseRequest{ExtId: extID})
-		if err != nil {
-			err := p.ReleaseTicket(ctx, lineageId, extID)
-			if err != nil {
-				log.Ctx(ctx).Error().Err(err).Msg("")
-			}
-			hasFailedToLeaseTicket = true
-			break
-		}
-		*responseList.Leases = append(*responseList.Leases, *resp)
-	}
-
-	if hasFailedToLeaseTicket {
-		for _, response := range *responseList.Leases {
-			err := p.ReleaseTicket(ctx, lineageId, response.ExtId)
-			if err != nil {
-				log.Ctx(ctx).Error().Err(err).Msg("")
-			}
-		}
-	}
-
-	return &responseList, nil
-}
-
 func (p *Servicer) LeaseTicket(ctx context.Context, lineageId string, request *api.TicketLeaseRequest) (*api.TicketLeaseResponse, error) {
 	var err error
 	shouldRetry := true
-	var nonce int64 = 0
+	var nonces []int64
 
 	for attempt := 1; shouldRetry && attempt <= optimisticLockMaxRetryAttempts; attempt++ {
-		nonce, shouldRetry, err = p.tryLeaseTicket(ctx, lineageId, request)
+		nonces, shouldRetry, err = p.tryLeaseTicket(ctx, lineageId, request)
 		if err != nil {
 			if shouldRetry {
 				log.Ctx(ctx).Info().
 					Str("lineageId", lineageId).
-					Str("extId", request.ExtId).
+					Strs("extId", request.ExtIds).
 					Msg("retrying to lease ticket")
 
 				jitterSleep(attempt, optimisticLockSleepBase, optimisticLockSleepMax)
@@ -205,33 +176,38 @@ func (p *Servicer) LeaseTicket(ctx context.Context, lineageId string, request *a
 		}
 	}
 
+	var leases []api.TicketLease
+	for i, n := range nonces {
+		l := api.TicketLease{
+			LineageId: lineageId,
+			Nonce:     int(n), //TODO - check correct cast
+			ExtId:     request.ExtIds[i],
+			State:     api.TicketLeaseStateLeased,
+		}
+
+		leases = append(leases, l)
+	}
+
 	resp := &api.TicketLeaseResponse{
-		LineageId: lineageId,
-		ExtId:     request.ExtId,
-		Nonce:     int(nonce),
-		State:     api.TicketLeaseResponseStateLeased,
+		Leases: &leases,
 	}
 
 	log.Ctx(ctx).Info().
-		Str("lineageId", resp.LineageId).
-		Str("extId", resp.ExtId).
-		Int("nonce", resp.Nonce).
-		Msg("leased ticket")
+		Str("lineageId", lineageId).
+		Strs("extId", request.ExtIds).
+		Ints64("nonce", nonces).
+		Msg("leased tickets")
 
 	return resp, nil
 }
 
-func (p *Servicer) tryLeaseTicket(ctx context.Context, lineageId string, request *api.TicketLeaseRequest) (int64, bool, error) {
+func (p *Servicer) tryLeaseTicket(ctx context.Context, lineageId string, request *api.TicketLeaseRequest) ([]int64, bool, error) {
 	version, err := p.getLineageVersion(ctx, lineageId)
 	if err != nil {
-		return 0, false, err
+		return nil, false, err
 	}
 
-	array := pq.Array([1]string{request.ExtId})
-
-	// select create_ticket('5747600c-c493-456c-bec9-cad43eb90b8a', 55, {"foo"});
-
-	rows, err := p.db.QueryContext(ctx, queryStringCreateTicket, lineageId, version, array)
+	rows, err := p.db.QueryContext(ctx, queryStringCreateTicket, lineageId, version, pq.Array(request.ExtIds))
 	if err != nil {
 		if pqErr, ok := err.(*pq.Error); ok {
 			switch pqErr.Code {
@@ -239,44 +215,44 @@ func (p *Servicer) tryLeaseTicket(ctx context.Context, lineageId string, request
 			case "22P02":
 				log.Ctx(ctx).Error().
 					Str("lineageId", lineageId).
-					Str("extId", request.ExtId).
+					Strs("extIds", request.ExtIds).
 					Str("pqErr Where", pqErr.Where).
 					Err(err).
 					Msg("")
-				return 0, false, ticket.ErrInvalidRequest
+				return nil, false, ticket.ErrInvalidRequest
 			}
 
 			switch pqErr.Message {
 			case sqlErrMessageValidationError:
-				return 0, false, ticket.ErrInvalidRequest
+				return nil, false, ticket.ErrInvalidRequest
 			case sqlErrMessageMaxUnusedLimitExceeded:
 				log.Ctx(ctx).Info().
 					Str("lineageId", lineageId).
-					Str("extId", request.ExtId).
+					Strs("extId", request.ExtIds).
 					Msg("can not lease ticket, too many leased tickets in lineage")
 
-				return 0, false, ticket.ErrTooManyLeasedTickets
+				return nil, false, ticket.ErrTooManyLeasedTickets
 			case sqlErrMessageOptimisticLock:
 				log.Ctx(ctx).Debug().
 					Str("lineageId", lineageId).
-					Str("extId", request.ExtId).
+					Strs("extId", request.ExtIds).
 					Msg("can not lease ticket due to too many concurrent requests(optimistic lock)")
 
-				return 0, true, ticket.ErrTooManyConcurrentRequests
+				return nil, true, ticket.ErrTooManyConcurrentRequests
 			default:
-				return 0, false, err
+				return nil, false, err
 			}
 		}
-		return 0, false, err
+		return nil, false, err
 	}
 	defer rowClose(ctx, rows)
 
-	nonce, err := getNoncesFromRow(rows)
+	nonces, err := getNoncesFromRow(rows)
 	if err != nil {
-		return 0, false, err
+		return nil, false, err
 	}
 
-	return *nonce, false, nil
+	return nonces, false, nil
 }
 
 func (p *Servicer) GetTicket(ctx context.Context, lineageId string, ticketExtId string) (*api.TicketLeaseResponse, error) {
@@ -306,10 +282,14 @@ func (p *Servicer) GetTicket(ctx context.Context, lineageId string, ticketExtId 
 	}
 
 	resp := &api.TicketLeaseResponse{
-		ExtId:     ticketExtId,
-		LineageId: lineageId,
-		Nonce:     nonce,
-		State:     api.TicketLeaseResponseState(stateStr),
+		Leases: &[]api.TicketLease{
+			{
+				ExtId:     ticketExtId,
+				LineageId: lineageId,
+				Nonce:     nonce,
+				State:     api.TicketLeaseState(stateStr),
+			},
+		},
 	}
 
 	log.Ctx(ctx).Info().
@@ -507,7 +487,7 @@ func getNonceFromRow(rows *sql.Rows) (*int, error) {
 	return &nonce, nil
 }
 
-func getNoncesFromRow(rows *sql.Rows) (*int64, error) {
+func getNoncesFromRow(rows *sql.Rows) ([]int64, error) {
 	var nonces []int64
 	if !rows.Next() {
 		return nil, errors.New("expected nonce in result set")
@@ -516,7 +496,7 @@ func getNoncesFromRow(rows *sql.Rows) (*int64, error) {
 		return nil, err
 	}
 
-	return &nonces[0], nil
+	return nonces, nil
 }
 
 func rowClose(ctx context.Context, rows *sql.Rows) {

@@ -52,16 +52,14 @@ paths:
         content:
           application/json:
             schema:
-              oneOf:
-                - $ref: "#/components/schemas/TicketBulkLeaseRequest"
-                - $ref: "#/components/schemas/TicketLeaseRequest"
+              $ref: "#/components/schemas/TicketLeaseRequest"
       responses:
         '200':
           description: Ticket lease acquired
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/TicketLeaseResponseList"
+                $ref: "#/components/schemas/TicketLeaseResponse"
         '400':
           description: bad request
           content:
@@ -174,7 +172,7 @@ components:
         maxNonceValue:
           type: integer
 
-    TicketBulkLeaseRequest:
+    TicketLeaseRequest:
       type: object
       required:
         - extIds
@@ -184,23 +182,15 @@ components:
           items:
             type: string
 
-    TicketLeaseRequest:
-      type: object
-      required:
-        - extId
-      properties:
-        extId:
-          type: string
-
-    TicketLeaseResponseList:
+    TicketLeaseResponse:
       type: object
       properties:
         leases:
           type: array
           items:
-            $ref: "#/components/schemas/TicketLeaseResponse"
+            $ref: "#/components/schemas/TicketLease"
 
-    TicketLeaseResponse:
+    TicketLease:
       type: object
       required:
         - lineageId
