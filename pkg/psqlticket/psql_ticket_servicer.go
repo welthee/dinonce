@@ -18,7 +18,7 @@ import (
 
 // Optimistic lock retry constants
 const (
-	optimisticLockMaxRetryAttempts  = 1
+	optimisticLockMaxRetryAttempts  = 5
 	optimisticLockJitterSleepFactor = 2
 	optimisticLockSleepBase         = 10 * time.Millisecond
 	optimisticLockSleepMax          = 1 * time.Second
