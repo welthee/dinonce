@@ -18,6 +18,7 @@ create or replace function create_ticket(
 as
 $$
 declare
+    _now                                timestamp;
     _number_of_requested_tickets        integer;
     _existing_tickets                   tns_triplet[];
     _number_of_existing_leased_tickets  integer;
@@ -28,9 +29,8 @@ declare
     _number_of_leased_tickets           integer;
     _max_leased_unused_count            integer;
     _new_nonces                         bigint[];
-    _new_tickets                        tns_triplet[];
-    _new_ticket_ids                     character varying(64)[];
     _nonces_to_insert                   bigint[];
+    _new_tickets                        tns_triplet[];
     _nonces_to_return                   bigint[];
     _i_ticket                           tns_triplet;
     _i_number_of_used_new_tickets       integer;
@@ -65,6 +65,10 @@ begin
 
     _number_of_selected_released_nonces = array_length(_selected_released_nonces, 1);
 
+    if _number_of_selected_released_nonces is null then
+        _number_of_selected_released_nonces = 0;
+    end if;
+
     if _number_of_selected_released_nonces > 0 then
         delete
         from released_tickets
@@ -75,8 +79,7 @@ begin
     _number_of_new_tickets =
                 _number_of_requested_tickets - _number_of_existing_leased_tickets - _number_of_selected_released_nonces;
 
-    update
-        lineages
+    update lineages
     set released_nonce_count = released_nonce_count - _number_of_selected_released_nonces,
         next_nonce           = next_nonce + _number_of_new_tickets,
         leased_nonce_count   = leased_nonce_count + _number_of_new_tickets,
@@ -97,25 +100,21 @@ begin
 
     _nonces_to_insert = array_cat(_selected_released_nonces, _new_nonces);
 
-    select array(
-                   select (t::tns_triplet).ext_id
-                   from unnest(_ticket_ext_ids) as t
-                   where (t::tns_triplet).ext_id not in (select unnest(_existing_tickets))
-                   order by (t::tns_triplet).ext_id
-               )
-    into _new_ticket_ids;
+    _i_number_of_used_new_tickets = array_lower(_nonces_to_insert, 1);
 
-    _i_number_of_used_new_tickets = array_lower(_new_tickets, 1);
     for i in array_lower(_ticket_ext_ids, 1)..array_upper(_ticket_ext_ids, 1)
         loop
-            select (t::tns_triplet).ext_id, (t::tns_triplet).nonce, (t::tns_triplet).status
-            from (select unnest(_existing_tickets)) as t
-            where (t::tns_triplet).ext_id = _ticket_ext_ids[i]
-            into _i_ticket;
+            if _number_of_existing_leased_tickets != 0 then
+                select (t::tns_triplet).ext_id, (t::tns_triplet).nonce, (t::tns_triplet).status
+                from unnest(_existing_tickets) as t
+                where _ticket_ext_ids[i] = (t::tns_triplet).ext_id
+                into _i_ticket;
+            end if;
 
             if _i_ticket is null then
                 _i_ticket =
-                        (_ticket_ext_ids[i], _new_nonces[_i_number_of_used_new_tickets], 'leased')::tns_triplet;
+                        (_ticket_ext_ids[i], _nonces_to_insert[_i_number_of_used_new_tickets], 'leased')::tns_triplet;
+                _new_tickets[_i_number_of_used_new_tickets] = _i_ticket;
                 _i_number_of_used_new_tickets = _i_number_of_used_new_tickets + 1;
             end if;
 
@@ -123,6 +122,12 @@ begin
 
             _i_ticket = null;
         end loop;
+
+    _now = now();
+    insert
+    into tickets(lineage_id, ext_id, nonce, leased_at, lease_status)
+    select _lineage_id, (t::tns_triplet).ext_id, (t::tns_triplet).nonce, _now, 'leased'
+    from unnest(_new_tickets) as t;
 
     return _nonces_to_return;
 end
