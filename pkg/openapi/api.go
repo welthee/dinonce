@@ -174,6 +174,25 @@ func (h *ApiHandler) UpdateTicket(ctx echo.Context, lineageId string, ticketExtI
 	return ctx.NoContent(http.StatusNoContent)
 }
 
+func (h *ApiHandler) GetTickets(ctx echo.Context, lineageId string, params api.GetTicketsParams) error {
+	rCtx := ctx.Request().Context()
+	resp, err := h.servicer.GetTickets(rCtx, lineageId, params.TicketExtIds)
+	if err != nil {
+		switch err {
+		case ticket.ErrNoSuchTicket:
+			return ctx.NoContent(http.StatusNotFound)
+		case ticket.ErrInvalidRequest:
+			return ctx.JSON(http.StatusBadRequest, api.Error{
+				Code:    ErrorCodeBadRequest,
+				Message: err.Error(),
+			})
+		default:
+			return err
+		}
+	}
+
+	return ctx.JSON(http.StatusOK, resp)}
+
 func (h *ApiHandler) Start() error {
 	h.e.Use(echomiddleware.Recover())
 	h.enablePrometheus()

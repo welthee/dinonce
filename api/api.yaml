@@ -66,7 +66,30 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-
+    get:
+      operationId: getTickets
+      parameters:
+          - name: lineageId
+            in: path
+            required: true
+            schema:
+              type: string
+          - name: ticketExtIds
+            in: query
+            required: true
+            schema:
+              type: array
+              items:
+                type: string
+      responses:
+        '200':
+          description: A list of tickets is returned to the client.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TicketLeaseResponse"
+        '404':
+          description: Tickets with the given extIds does not have an active or closed lease.
 
   /lineages/{lineageId}/tickets/{ticketExtId}:
     get:

@@ -54,6 +54,8 @@ released_nonce_count, max_leased_nonce_count, max_nonce_value, version from line
 	queryStringSelectLineageVersion = `select version from lineages where id = $1;`
 
 	queryStringSelectTicket = `select nonce, lease_status from tickets where lineage_id = $1 and ext_id = $2`
+
+	queryStringSelectTickets = `select ext_id, nonce, lease_status from tickets where lineage_id = $1 and ext_id = any($2)`
 )
 
 type Servicer struct {
@@ -323,6 +325,57 @@ func (p *Servicer) ReleaseTicket(ctx context.Context, lineageId string, ticketEx
 	return nil
 }
 
+func (p *Servicer) GetTickets(ctx context.Context, lineageId string, ticketExtIds []string) (*api.TicketLeaseResponse, error) {
+	var nonce int
+	var stateStr string
+	var extId string
+
+	rows, err := p.db.QueryContext(ctx, queryStringSelectTickets, lineageId, pq.Array(ticketExtIds))
+	defer rowCloser(rows)
+
+	if err != nil {
+		if pqErr, ok := err.(*pq.Error); ok {
+			switch pqErr.Code {
+			// 22P02 INVALID TEXT REPRESENTATION
+			case "22P02":
+				return nil, ticket.ErrInvalidRequest
+			}
+		}
+
+		return nil, err
+	}
+	var tickets []api.TicketLease
+
+	for rows.Next() {
+		if err := rows.Scan(&extId, &nonce, &stateStr); err != nil {
+			return nil, err
+		}
+
+		ticketLease := api.TicketLease{
+			ExtId:     extId,
+			LineageId: lineageId,
+			Nonce:     nonce,
+			State:     api.TicketLeaseState(stateStr),
+		}
+
+		tickets = append(tickets, ticketLease)
+	}
+	if len(tickets) == 0 {
+		return nil, ticket.ErrNoSuchTicket
+	}
+
+	resp := &api.TicketLeaseResponse{
+		Leases: &tickets,
+	}
+
+	log.Ctx(ctx).Info().
+		Str("lineageId", lineageId).
+		Strs("extIds", ticketExtIds).
+		Msg("retrieved tickets")
+
+	return resp, nil
+}
+
 func (p *Servicer) tryReleaseTicket(ctx context.Context, lineageId string, ticketExtId string) (bool, error) {
 	version, err := p.getLineageVersion(ctx, lineageId)
 	if err != nil {
@@ -516,4 +569,13 @@ func jitterSleep(attempt int, base, max time.Duration) {
 	}
 	j := time.Duration(rand.Float64()*(dur-mn) + mn)
 	time.Sleep(j)
+}
+
+func rowCloser(rows *sql.Rows) {
+	if rows != nil {
+		err := rows.Close()
+		if err != nil {
+			log.Err(err).Msg("can not close connection")
+		}
+	}
 }

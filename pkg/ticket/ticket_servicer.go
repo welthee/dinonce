@@ -22,4 +22,5 @@ type Servicer interface {
 	GetTicket(ctx context.Context, lineageId string, ticketExtId string) (*api.TicketLeaseResponse, error)
 	ReleaseTicket(ctx context.Context, lineageId string, ticketExtId string) error
 	CloseTicket(ctx context.Context, lineageId string, ticketExtId string) error
+	GetTickets(ctx context.Context, lineageId string, ticketExtIds []string) (*api.TicketLeaseResponse, error)
 }
