@@ -4,6 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
+	"os"
+	"strings"
+
 	"github.com/deepmap/oapi-codegen/pkg/middleware"
 	"github.com/labstack/echo-contrib/prometheus"
 	"github.com/labstack/echo/v4"
@@ -12,9 +16,6 @@ import (
 	api "github.com/welthee/dinonce/v2/pkg/openapi/generated"
 	"github.com/welthee/dinonce/v2/pkg/ticket"
 	"github.com/ziflex/lecho/v3"
-	"net/http"
-	"os"
-	"strings"
 )
 
 const port = 5010
@@ -30,6 +31,7 @@ type ApiHandler struct {
 }
 
 func NewApiHandler(servicer ticket.Servicer) *ApiHandler {
+	var _ api.ServerInterface = &ApiHandler{}
 	e := echo.New()
 	e.HideBanner = true
 
@@ -86,8 +88,7 @@ func (h *ApiHandler) GetLineageByExtId(ctx echo.Context, params api.GetLineageBy
 
 func (h *ApiHandler) LeaseTicket(ctx echo.Context, lineageId string) error {
 	req := &api.TicketLeaseRequest{}
-	err := ctx.Bind(req)
-	if err != nil {
+	if err := ctx.Bind(req); err != nil {
 		return err
 	}
 
@@ -172,6 +173,25 @@ func (h *ApiHandler) UpdateTicket(ctx echo.Context, lineageId string, ticketExtI
 
 	return ctx.NoContent(http.StatusNoContent)
 }
+
+func (h *ApiHandler) GetTickets(ctx echo.Context, lineageId string, params api.GetTicketsParams) error {
+	rCtx := ctx.Request().Context()
+	resp, err := h.servicer.GetTickets(rCtx, lineageId, params.TicketExtIds)
+	if err != nil {
+		switch err {
+		case ticket.ErrNoSuchTicket:
+			return ctx.NoContent(http.StatusNotFound)
+		case ticket.ErrInvalidRequest:
+			return ctx.JSON(http.StatusBadRequest, api.Error{
+				Code:    ErrorCodeBadRequest,
+				Message: err.Error(),
+			})
+		default:
+			return err
+		}
+	}
+
+	return ctx.JSON(http.StatusOK, resp)}
 
 func (h *ApiHandler) Start() error {
 	h.e.Use(echomiddleware.Recover())
