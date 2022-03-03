@@ -429,6 +429,115 @@ func TestServicer_LeaseTicket_ReleasedNonceReassignment(t *testing.T) {
 	}
 }
 
+func TestServicer_ReleaseTicket_WhenLineageFull(t *testing.T) {
+	lineageId := createLineage(t)
+
+	extIds := make([]string, maxLeasedNonceCount)
+	for i := 0; i < maxLeasedNonceCount; i++ {
+		extIds[i] = fmt.Sprintf("tx%d", i)
+	}
+
+	log.Info().Strs("extIds", extIds).Msg("")
+
+	request := &api.TicketLeaseRequest{
+		ExtIds: extIds,
+	}
+
+	resp, err := victim.LeaseTicket(ctx, lineageId, request)
+	if err != nil {
+		t.Errorf("can not lease %d tickets %s", maxLeasedNonceCount, err)
+	}
+
+	subsequentTicketLeaseRequest := &api.TicketLeaseRequest{ExtIds: []string{"subsequent-tx"}}
+	_, err = victim.LeaseTicket(ctx, lineageId, subsequentTicketLeaseRequest)
+	if err != ticket.ErrTooManyLeasedTickets {
+		t.Errorf("should not be able to lease more tickets than %d", maxLeasedNonceCount)
+	}
+
+	err = victim.ReleaseTicket(ctx, lineageId, request.ExtIds[0])
+
+	resp, err = victim.LeaseTicket(ctx, lineageId, subsequentTicketLeaseRequest)
+	if err != nil {
+		t.Errorf("can not subsequent ticket after release %s", err)
+	}
+
+	nonce := ensureAndGetSingleNonce(t, resp)
+
+	if nonce != 0 {
+		t.Errorf("expected released nonce 0 to be reused on subsequent tx, got %d", nonce)
+	}
+}
+
+func TestServicer_ReleaseTicket_WhenLineageFullNoSuchTicket(t *testing.T) {
+	lineageId := createLineage(t)
+
+	extIds := make([]string, maxLeasedNonceCount)
+	for i := 0; i < maxLeasedNonceCount; i++ {
+		extIds[i] = fmt.Sprintf("tx%d", i)
+	}
+
+	request := &api.TicketLeaseRequest{
+		ExtIds: extIds,
+	}
+
+	_, err := victim.LeaseTicket(ctx, lineageId, request)
+	if err != nil {
+		t.Errorf("can not lease %d tickets %s", maxLeasedNonceCount, err)
+	}
+
+	subsequentTicketLeaseRequest := &api.TicketLeaseRequest{ExtIds: []string{"subsequent-tx"}}
+	_, err = victim.LeaseTicket(ctx, lineageId, subsequentTicketLeaseRequest)
+	if err != ticket.ErrTooManyLeasedTickets {
+		t.Errorf("should not be able to lease more tickets than %d", maxLeasedNonceCount)
+	}
+
+	err = victim.ReleaseTicket(ctx, lineageId, subsequentTicketLeaseRequest.ExtIds[0])
+	if err != ticket.ErrNoSuchTicket {
+		t.Errorf("expected ErrNoSuchTicket")
+	}
+}
+
+func TestServicer_ReleaseTicket_ReleaseAll(t *testing.T) {
+	lineageId := createLineage(t)
+
+	extIds := make([]string, maxLeasedNonceCount)
+	for i := 0; i < maxLeasedNonceCount; i++ {
+		extIds[i] = fmt.Sprintf("tx%d", i)
+	}
+
+	request := &api.TicketLeaseRequest{
+		ExtIds: extIds,
+	}
+
+	_, err := victim.LeaseTicket(ctx, lineageId, request)
+	if err != nil {
+		t.Errorf("can not lease %d tickets %s", maxLeasedNonceCount, err)
+	}
+
+	subsequentTicketLeaseRequest := &api.TicketLeaseRequest{ExtIds: []string{"subsequent-tx"}}
+	_, err = victim.LeaseTicket(ctx, lineageId, subsequentTicketLeaseRequest)
+	if err != ticket.ErrTooManyLeasedTickets {
+		t.Errorf("should not be able to lease more tickets than %d", maxLeasedNonceCount)
+	}
+
+	for _, eId := range request.ExtIds {
+		err = victim.ReleaseTicket(ctx, lineageId, eId)
+		if err != nil {
+			t.Errorf("can not release ticket %s %s", eId, err)
+		}
+	}
+
+	resp, err := victim.LeaseTicket(ctx, lineageId, subsequentTicketLeaseRequest)
+	if err != nil {
+		t.Errorf("can not lease ticket %s", err)
+	}
+
+	nonce := ensureAndGetSingleNonce(t, resp)
+	if nonce != 0 {
+		t.Errorf("expected nonce to be 0, since all tickets have been released")
+	}
+}
+
 func TestServicer_ReleaseTicket_NoSuchLineage(t *testing.T) {
 	lineageId, _ := uuid.NewUUID()
 
