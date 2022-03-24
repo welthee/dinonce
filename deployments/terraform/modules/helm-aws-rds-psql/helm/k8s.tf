@@ -6,7 +6,7 @@ resource "kubernetes_namespace" "dinonce" {
 
 resource "kubernetes_config_map" "dinonce_config" {
   metadata {
-    name = "dinonce-config"
+    name      = "dinonce-config"
     namespace = kubernetes_namespace.dinonce.metadata.0.name
   }
 

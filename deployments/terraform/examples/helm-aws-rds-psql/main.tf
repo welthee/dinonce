@@ -15,16 +15,16 @@ data "aws_eks_cluster_auth" "cluster" {
 }
 
 provider "kubernetes" {
-  host = data.aws_eks_cluster.cluster.endpoint
+  host                   = data.aws_eks_cluster.cluster.endpoint
   cluster_ca_certificate = base64decode(data.aws_eks_cluster.cluster.certificate_authority.0.data)
-  token = data.aws_eks_cluster_auth.cluster.token
+  token                  = data.aws_eks_cluster_auth.cluster.token
 }
 
 provider "helm" {
   kubernetes {
-    host = data.aws_eks_cluster.cluster.endpoint
+    host                   = data.aws_eks_cluster.cluster.endpoint
     cluster_ca_certificate = base64decode(data.aws_eks_cluster.cluster.certificate_authority.0.data)
-    token = data.aws_eks_cluster_auth.cluster.token
+    token                  = data.aws_eks_cluster_auth.cluster.token
   }
 }
 
@@ -45,8 +45,8 @@ module "dinonce_helm" {
   source = "../../modules/helm-aws-rds-psql/helm"
 
   rds_cluster_endpoint = module.dinonce_rds.rds_cluster_endpoint
-  rds_cluster_port = module.dinonce_rds.rds_cluster_port
-  rds_username = module.dinonce_rds.rds_cluster_username
-  rds_password = module.dinonce_rds.rds_cluster_password
-  rds_database_name = module.dinonce_rds.rds_cluster_database_name
+  rds_cluster_port     = module.dinonce_rds.rds_cluster_port
+  rds_username         = module.dinonce_rds.rds_cluster_username
+  rds_password         = module.dinonce_rds.rds_cluster_password
+  rds_database_name    = module.dinonce_rds.rds_cluster_database_name
 }

@@ -11,7 +11,7 @@ output "rds_cluster_username" {
 }
 
 output "rds_cluster_password" {
-  value = module.db.this_rds_cluster_master_password
+  value     = module.db.this_rds_cluster_master_password
   sensitive = true
 }
 

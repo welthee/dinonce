@@ -1,5 +1,5 @@
 variable "name" {
-  type = string
+  type    = string
   default = "dinonce"
 }
 
@@ -20,5 +20,9 @@ variable "rds_password" {
 }
 
 variable "rds_database_name" {
+  type = string
+}
+
+variable "release_tag" {
   type = string
 }
