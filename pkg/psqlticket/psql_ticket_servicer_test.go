@@ -181,7 +181,7 @@ func TestServicer_LeaseTicket_WithSameNonce(t *testing.T) {
 		t.Errorf("expected first leased nonce to be 0, got %d", nonce)
 	}
 
-	resp, err = victim.LeaseTicket(ctx, lineageId, request)
+	_, err = victim.LeaseTicket(ctx, lineageId, request)
 	if err != nil {
 		t.Errorf("fail on multiple lease operations, should be idempotent %s", err)
 	}
@@ -206,7 +206,7 @@ func TestServicer_LeaseTicket_SameTicketDoubleLeaseWhenLineageFull(t *testing.T)
 	}
 
 	request := &api.TicketLeaseRequest{
-		ExtIds: []string{fmt.Sprintf("test-tx")},
+		ExtIds: []string{"test-tx"},
 	}
 
 	if _, err := victim.LeaseTicket(ctx, lineageId, request); err != nil {
@@ -344,7 +344,7 @@ func TestServicer_LeaseTicket_InvalidRequestErrorOnClosedExtId(t *testing.T) {
 		t.Errorf("can not close leased ticket %s", err)
 	}
 
-	resp, err = victim.LeaseTicket(ctx, lineageId, request)
+	_, err = victim.LeaseTicket(ctx, lineageId, request)
 	if err == nil {
 		t.Error("should not be able to lease a ticket with a closed ticket's ref")
 	}
@@ -369,7 +369,7 @@ func TestServicer_LeaseTicket_TooManyLeasedTicketsError(t *testing.T) {
 	}
 
 	request := &api.TicketLeaseRequest{
-		ExtIds: []string{fmt.Sprintf("failing-tx")},
+		ExtIds: []string{"failing-tx"},
 	}
 
 	_, err := victim.LeaseTicket(ctx, lineageId, request)
@@ -406,18 +406,20 @@ func TestServicer_LeaseTicket_ReleasedNonceReassignment(t *testing.T) {
 		ExtIds: []string{"tx1"},
 	}
 
-	resp, err := victim.LeaseTicket(ctx, lineageId, request)
+	_, err := victim.LeaseTicket(ctx, lineageId, request)
 	if err != nil {
 		t.Errorf("can not lease initial ticket %s", err)
 	}
 
 	err = victim.ReleaseTicket(ctx, lineageId, request.ExtIds[0])
-
+	if err != nil {
+		t.Errorf("can not release first ticket %s", err)
+	}
 	request = &api.TicketLeaseRequest{
 		ExtIds: []string{"tx2"},
 	}
 
-	resp, err = victim.LeaseTicket(ctx, lineageId, request)
+	resp, err := victim.LeaseTicket(ctx, lineageId, request)
 	if err != nil {
 		t.Errorf("can not lease second ticket %s", err)
 	}
