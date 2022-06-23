@@ -4,6 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"net/http"
+	"os"
+	"os/signal"
+	"time"
+
 	"github.com/etherlabsio/healthcheck"
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/postgres"
@@ -14,10 +19,6 @@ import (
 	"github.com/welthee/dinonce/v2/pkg/openapi"
 	"github.com/welthee/dinonce/v2/pkg/psqlticket"
 	"github.com/welthee/dinonce/v2/pkg/ticket"
-	"net/http"
-	"os"
-	"os/signal"
-	"time"
 )
 
 const ShutDownTimeout = 30 * time.Second

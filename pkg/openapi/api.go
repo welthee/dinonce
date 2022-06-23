@@ -191,7 +191,8 @@ func (h *ApiHandler) GetTickets(ctx echo.Context, lineageId string, params api.G
 		}
 	}
 
-	return ctx.JSON(http.StatusOK, resp)}
+	return ctx.JSON(http.StatusOK, resp)
+}
 
 func (h *ApiHandler) Start() error {
 	h.e.Use(echomiddleware.Recover())
@@ -232,11 +233,7 @@ func (h *ApiHandler) enableLoggerMiddlewares() {
 
 	h.e.Use(echomiddleware.RequestIDWithConfig(echomiddleware.RequestIDConfig{
 		Skipper: func(e echo.Context) bool {
-			if e.Request().RequestURI == "/metrics" {
-				return true
-			}
-
-			return false
+			return e.Request().RequestURI == "/metrics"
 		},
 	}))
 
@@ -247,11 +244,7 @@ func (h *ApiHandler) enableLoggerMiddlewares() {
 			}
 
 			userAgent := e.Request().UserAgent()
-			if strings.Contains(userAgent, "kube-probe") {
-				return true
-			}
-
-			return false
+			return strings.Contains(userAgent, "kube-probe")
 		},
 		Logger: logger,
 	}))
@@ -262,11 +255,7 @@ func (h *ApiHandler) enableLoggerMiddlewares() {
 
 	h.e.Use(echomiddleware.BodyDumpWithConfig(echomiddleware.BodyDumpConfig{
 		Skipper: func(e echo.Context) bool {
-			if e.Request().RequestURI == "/metrics" {
-				return true
-			}
-
-			return false
+			return e.Request().RequestURI == "/metrics"
 		},
 		Handler: func(e echo.Context, req []byte, resp []byte) {
 			requestBodyLogger.WithLevel(zerolog.TraceLevel).
@@ -288,11 +277,7 @@ func (h *ApiHandler) enableOpenApiValidatorMiddleware() error {
 	}
 	h.e.Use(middleware.OapiRequestValidatorWithOptions(swagger, &middleware.Options{
 		Skipper: func(e echo.Context) bool {
-			if e.Request().RequestURI == "/metrics" {
-				return true
-			}
-
-			return false
+			return e.Request().RequestURI == "/metrics"
 		},
 	}))
 

@@ -1,6 +1,7 @@
 DIST_DIR := ./dist
 
 OAPI_SCHEMA_FILE := api/api.yaml
+DEEPMAP_CONFIG_FILE := api/deepmap/api.yaml
 OAPI_GENERATED_DIR := ./pkg/openapi/generated
 OAPI_CODEGEN := ~/go/bin/oapi-codegen
 
@@ -17,7 +18,7 @@ build:
 
 oapi:
 		mkdir -p $(OAPI_GENERATED_DIR)
-		$(OAPI_CODEGEN) -generate 'types,server,spec' -package 'api' $(OAPI_SCHEMA_FILE) > $(OAPI_GENERATED_DIR)/api.gen.go
+		$(OAPI_CODEGEN) --config=$(DEEPMAP_CONFIG_FILE) $(OAPI_SCHEMA_FILE)
 
 clean:
 		rm -rf $(DIST_DIR)
