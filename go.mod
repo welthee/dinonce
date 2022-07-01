@@ -3,17 +3,17 @@ module github.com/welthee/dinonce/v2
 go 1.17
 
 require (
-	github.com/deepmap/oapi-codegen v1.9.1
+	github.com/deepmap/oapi-codegen v1.11.0
 	github.com/etherlabsio/healthcheck v0.0.0-20191224061800-dd3d2fd8c3f6
-	github.com/getkin/kin-openapi v0.87.0
-	github.com/golang-migrate/migrate/v4 v4.15.1
+	github.com/getkin/kin-openapi v0.97.0
+	github.com/golang-migrate/migrate/v4 v4.15.2
 	github.com/google/uuid v1.3.0
-	github.com/labstack/echo-contrib v0.11.0
-	github.com/labstack/echo/v4 v4.6.3
-	github.com/lib/pq v1.10.4
-	github.com/rs/zerolog v1.26.0
-	github.com/spf13/viper v1.9.0
-	github.com/ziflex/lecho/v3 v3.0.0
+	github.com/labstack/echo-contrib v0.12.0
+	github.com/labstack/echo/v4 v4.7.2
+	github.com/lib/pq v1.10.6
+	github.com/rs/zerolog v1.27.0
+	github.com/spf13/viper v1.12.0
+	github.com/ziflex/lecho/v3 v3.1.0
 )
 
 require (
