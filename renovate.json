@@ -1,0 +1,56 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:base"
+  ],
+  "packageRules": [
+    {
+      "matchPackagePatterns": [
+        "*"
+      ],
+      "matchManagers": [
+        "gomod"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "patch",
+        "digest"
+      ],
+      "postUpdateOptions": ["gomodTidy", "gomodUpdateImportPaths"],
+      "groupName": "all non-major golang dependencies",
+      "groupSlug": "all-minor-patch-golang"
+    },
+    {
+      "matchPackagePatterns": [
+        "*"
+      ],
+      "matchManagers": [
+        "dockerfile",
+        "docker-compose"
+      ],
+      "groupName": "all docker dependencies",
+      "groupSlug": "all-docker"
+    },
+    {
+      "matchPackagePatterns": [
+        "*"
+      ],
+      "matchManagers": [
+        "github-actions"
+      ],
+      "groupName": "all github action dependencies",
+      "groupSlug": "all-gha"
+    },
+    {
+      "matchPackagePatterns": [
+        "*"
+      ],
+      "matchManagers": [
+        "terraform",
+        "terraform-version"
+      ],
+      "groupName": "all terraform dependencies",
+      "groupSlug": "all-terraform"
+    }
+  ]
+}
