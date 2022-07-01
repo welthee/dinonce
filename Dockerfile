@@ -1,4 +1,4 @@
-FROM ubuntu:21.04 AS builder
+FROM ubuntu:22.04 AS builder
 RUN mkdir -p /tmp/src
 WORKDIR /tmp/src
 RUN apt update && apt install -y make golang ca-certificates && apt clean
@@ -9,7 +9,7 @@ RUN make mod-download
 COPY . .
 RUN make
 
-FROM ubuntu:21.04
+FROM ubuntu:22.04
 RUN mkdir -p /opt/dinonce
 RUN mkdir -p /opt/dinonce/config
 RUN adduser --system --disabled-password --home /opt/dinonce --no-create-home dinonce && chown -R dinonce /opt/dinonce
