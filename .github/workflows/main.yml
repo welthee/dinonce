@@ -71,7 +71,7 @@ jobs:
 
       - name: Dotenv Action
         id: dotenv
-        uses: falti/dotenv-action@v0.2.6
+        uses: falti/dotenv-action@v0.2.8
 
       - name: Build and push
         id: docker_build
