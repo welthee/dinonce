@@ -2,7 +2,7 @@ FROM ubuntu:22.04 AS builder
 RUN mkdir -p /tmp/src
 WORKDIR /tmp/src
 RUN apt update && apt install -y make golang ca-certificates && apt clean
-RUN go get github.com/deepmap/oapi-codegen/cmd/oapi-codegen
+RUN go install github.com/deepmap/oapi-codegen/cmd/oapi-codegen@latest
 COPY Makefile ./
 COPY go.mod go.sum ./
 RUN make mod-download
