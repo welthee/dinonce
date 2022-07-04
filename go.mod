@@ -4,7 +4,7 @@ go 1.18
 
 require (
 	github.com/deepmap/oapi-codegen v1.11.0
-	github.com/etherlabsio/healthcheck v0.0.0-20191224061800-dd3d2fd8c3f6
+	github.com/etherlabsio/healthcheck/v2 v2.0.0
 	github.com/getkin/kin-openapi v0.97.0
 	github.com/golang-migrate/migrate/v4 v4.15.2
 	github.com/google/uuid v1.3.0

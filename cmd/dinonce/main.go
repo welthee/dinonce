@@ -4,12 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/etherlabsio/healthcheck/v2"
 	"net/http"
 	"os"
 	"os/signal"
 	"time"
 
-	"github.com/etherlabsio/healthcheck"
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
