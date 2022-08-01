@@ -5,10 +5,10 @@ go 1.18
 require (
 	github.com/deepmap/oapi-codegen v1.11.0
 	github.com/etherlabsio/healthcheck/v2 v2.0.0
-	github.com/getkin/kin-openapi v0.97.0
+	github.com/getkin/kin-openapi v0.98.0
 	github.com/golang-migrate/migrate/v4 v4.15.2
 	github.com/google/uuid v1.3.0
-	github.com/labstack/echo-contrib v0.12.0
+	github.com/labstack/echo-contrib v0.13.0
 	github.com/labstack/echo/v4 v4.7.2
 	github.com/lib/pq v1.10.6
 	github.com/rs/zerolog v1.27.0
