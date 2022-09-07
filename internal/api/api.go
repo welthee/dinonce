@@ -1,9 +1,10 @@
-package openapi
+package api
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/welthee/dinonce/v2/internal/ticket"
 	"net/http"
 	"os"
 	"strings"
@@ -13,8 +14,7 @@ import (
 	"github.com/labstack/echo/v4"
 	echomiddleware "github.com/labstack/echo/v4/middleware"
 	"github.com/rs/zerolog"
-	api "github.com/welthee/dinonce/v2/pkg/openapi/generated"
-	"github.com/welthee/dinonce/v2/pkg/ticket"
+	api "github.com/welthee/dinonce/v2/internal/api/generated"
 	"github.com/ziflex/lecho/v3"
 )
 
@@ -25,23 +25,23 @@ const ErrorCodeBadRequest = "bad_request"
 const ErrorCodeTooManyLeasedTickets = "too_many_leased_tickets"
 const ErrTooManyConcurrentRequests = "too_many_concurrent_requests"
 
-type ApiHandler struct {
+type Handler struct {
 	e        *echo.Echo
 	servicer ticket.Servicer
 }
 
-func NewApiHandler(servicer ticket.Servicer) *ApiHandler {
-	var _ api.ServerInterface = &ApiHandler{}
+func NewHandler(servicer ticket.Servicer) *Handler {
+	var _ api.ServerInterface = &Handler{}
 	e := echo.New()
 	e.HideBanner = true
 
-	return &ApiHandler{
+	return &Handler{
 		e:        e,
 		servicer: servicer,
 	}
 }
 
-func (h *ApiHandler) CreateLineage(ctx echo.Context) error {
+func (h *Handler) CreateLineage(ctx echo.Context) error {
 	req := &api.LineageCreationRequest{}
 	err := ctx.Bind(req)
 	if err != nil {
@@ -69,7 +69,7 @@ func (h *ApiHandler) CreateLineage(ctx echo.Context) error {
 	return ctx.JSON(http.StatusOK, resp)
 }
 
-func (h *ApiHandler) GetLineageByExtId(ctx echo.Context, params api.GetLineageByExtIdParams) error {
+func (h *Handler) GetLineageByExtId(ctx echo.Context, params api.GetLineageByExtIdParams) error {
 	resp, err := h.servicer.GetLineage(ctx.Request().Context(), params.ExtId)
 	if err != nil {
 		switch err {
@@ -86,7 +86,7 @@ func (h *ApiHandler) GetLineageByExtId(ctx echo.Context, params api.GetLineageBy
 	return ctx.JSON(http.StatusOK, resp)
 }
 
-func (h *ApiHandler) LeaseTicket(ctx echo.Context, lineageId string) error {
+func (h *Handler) LeaseTicket(ctx echo.Context, lineageId string) error {
 	req := &api.TicketLeaseRequest{}
 	if err := ctx.Bind(req); err != nil {
 		return err
@@ -118,7 +118,7 @@ func (h *ApiHandler) LeaseTicket(ctx echo.Context, lineageId string) error {
 	return ctx.JSON(http.StatusOK, resp)
 }
 
-func (h *ApiHandler) GetTicket(ctx echo.Context, lineageId string, ticketExtId string) error {
+func (h *Handler) GetTicket(ctx echo.Context, lineageId string, ticketExtId string) error {
 	resp, err := h.servicer.GetTicket(ctx.Request().Context(), lineageId, ticketExtId)
 	if err != nil {
 		switch err {
@@ -137,7 +137,7 @@ func (h *ApiHandler) GetTicket(ctx echo.Context, lineageId string, ticketExtId s
 	return ctx.JSON(http.StatusOK, resp)
 }
 
-func (h *ApiHandler) UpdateTicket(ctx echo.Context, lineageId string, ticketExtId string) error {
+func (h *Handler) UpdateTicket(ctx echo.Context, lineageId string, ticketExtId string) error {
 	req := &api.TicketUpdateRequest{}
 	err := ctx.Bind(req)
 	if err != nil {
@@ -174,7 +174,7 @@ func (h *ApiHandler) UpdateTicket(ctx echo.Context, lineageId string, ticketExtI
 	return ctx.NoContent(http.StatusNoContent)
 }
 
-func (h *ApiHandler) GetTickets(ctx echo.Context, lineageId string, params api.GetTicketsParams) error {
+func (h *Handler) GetTickets(ctx echo.Context, lineageId string, params api.GetTicketsParams) error {
 	rCtx := ctx.Request().Context()
 	resp, err := h.servicer.GetTickets(rCtx, lineageId, params.TicketExtIds)
 	if err != nil {
@@ -194,7 +194,7 @@ func (h *ApiHandler) GetTickets(ctx echo.Context, lineageId string, params api.G
 	return ctx.JSON(http.StatusOK, resp)
 }
 
-func (h *ApiHandler) Start() error {
+func (h *Handler) Start() error {
 	h.e.Use(echomiddleware.Recover())
 	h.enablePrometheus()
 	h.enableLoggerMiddlewares()
@@ -208,7 +208,7 @@ func (h *ApiHandler) Start() error {
 	return h.e.Start(fmt.Sprintf(":%d", port))
 }
 
-func (h *ApiHandler) Stop(ctx context.Context) error {
+func (h *Handler) Stop(ctx context.Context) error {
 	err := h.e.Shutdown(ctx)
 	if err != nil {
 		return err
@@ -217,12 +217,12 @@ func (h *ApiHandler) Stop(ctx context.Context) error {
 	return nil
 }
 
-func (h *ApiHandler) enablePrometheus() {
+func (h *Handler) enablePrometheus() {
 	p := prometheus.NewPrometheus("dinonce", nil)
 	p.Use(h.e)
 }
 
-func (h *ApiHandler) enableLoggerMiddlewares() {
+func (h *Handler) enableLoggerMiddlewares() {
 	logger := lecho.New(
 		os.Stdout,
 		lecho.WithTimestamp(),
@@ -270,7 +270,7 @@ func (h *ApiHandler) enableLoggerMiddlewares() {
 	}))
 }
 
-func (h *ApiHandler) enableOpenApiValidatorMiddleware() error {
+func (h *Handler) enableOpenApiValidatorMiddleware() error {
 	swagger, err := api.GetSwagger()
 	if err != nil {
 		return err

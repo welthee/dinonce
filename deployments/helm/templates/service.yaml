@@ -8,8 +8,8 @@ spec:
   type: {{ .Values.service.type }}
   ports:
     - port: {{ .Values.service.port }}
-      targetPort: http
+      targetPort: api
       protocol: TCP
-      name: http
+      name: api
   selector:
     {{- include "dinonce.selectorLabels" . | nindent 4 }}

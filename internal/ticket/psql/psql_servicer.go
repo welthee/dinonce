@@ -1,9 +1,10 @@
-package psqlticket
+package psql
 
 import (
 	"context"
 	"database/sql"
 	"errors"
+	"github.com/welthee/dinonce/v2/internal/ticket"
 	"math"
 	"math/rand"
 	"time"
@@ -12,8 +13,7 @@ import (
 	"github.com/lib/pq"
 	_ "github.com/lib/pq"
 	"github.com/rs/zerolog/log"
-	api "github.com/welthee/dinonce/v2/pkg/openapi/generated"
-	"github.com/welthee/dinonce/v2/pkg/ticket"
+	api "github.com/welthee/dinonce/v2/internal/api/generated"
 )
 
 // Optimistic lock retry constants
