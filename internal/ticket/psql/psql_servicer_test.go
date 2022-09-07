@@ -1,9 +1,11 @@
-package psqlticket_test
+package psql_test
 
 import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/welthee/dinonce/v2/internal/ticket"
+	"github.com/welthee/dinonce/v2/internal/ticket/psql"
 	"os"
 	"sync"
 	"testing"
@@ -14,9 +16,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	api "github.com/welthee/dinonce/v2/pkg/openapi/generated"
-	"github.com/welthee/dinonce/v2/pkg/psqlticket"
-	"github.com/welthee/dinonce/v2/pkg/ticket"
+	api "github.com/welthee/dinonce/v2/internal/api/generated"
 )
 
 const (
@@ -63,7 +63,7 @@ func init() {
 		log.Fatal().Err(err).Msg("failed to run migrations")
 	}
 
-	victim = psqlticket.NewServicer(db)
+	victim = psql.NewServicer(db)
 }
 
 func TestServicer_CreateLineage(t *testing.T) {

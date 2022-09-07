@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"fmt"
 	"github.com/etherlabsio/healthcheck/v2"
+	"github.com/welthee/dinonce/v2/internal/ticket"
+	"github.com/welthee/dinonce/v2/internal/ticket/psql"
 	"net/http"
 	"os"
 	"os/signal"
@@ -16,9 +18,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
-	"github.com/welthee/dinonce/v2/pkg/openapi"
-	"github.com/welthee/dinonce/v2/pkg/psqlticket"
-	"github.com/welthee/dinonce/v2/pkg/ticket"
+	"github.com/welthee/dinonce/v2/internal/api"
 )
 
 const ShutDownTimeout = 30 * time.Second
@@ -97,10 +97,10 @@ func main() {
 				return db.PingContext(ctx)
 			}
 
-			svc = psqlticket.NewServicer(db)
+			svc = psql.NewServicer(db)
 		}
 
-		apiHandler := openapi.NewApiHandler(svc)
+		apiHandler := api.NewHandler(svc)
 
 		go func() {
 			if err := apiHandler.Start(); err != nil && err != http.ErrServerClosed {

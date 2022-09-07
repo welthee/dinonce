@@ -13,5 +13,5 @@ spec:
     matchLabels:
       {{- include "dinonce.selectorLabels" . | nindent 6 }}
   endpoints:
-    - port: http
+    - port: api
       path: "/metrics"

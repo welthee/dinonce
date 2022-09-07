@@ -1,7 +1,9 @@
-pkg/openapi/generated
+internal/openapi/generated
 dist/
+
 .idea/
+*.vscode
+
 .terraform/
 .terraform.lock.hcl
 terraform.tfstate**
-*.vscode

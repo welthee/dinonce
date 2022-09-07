@@ -2,7 +2,7 @@ DIST_DIR := ./dist
 
 OAPI_SCHEMA_FILE := api/api.yaml
 DEEPMAP_CONFIG_FILE := api/deepmap/api.yaml
-OAPI_GENERATED_DIR := ./pkg/openapi/generated
+OAPI_GENERATED_DIR := ./internal/api/generated
 OAPI_CODEGEN := ~/go/bin/oapi-codegen
 
 all: clean oapi build
