@@ -4,16 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/rs/zerolog/log"
 	"github.com/welthee/dinonce/v2/internal/ticket"
 	"net/http"
-	"os"
+	"regexp"
 	"strings"
 
 	"github.com/deepmap/oapi-codegen/pkg/middleware"
 	"github.com/labstack/echo-contrib/prometheus"
 	"github.com/labstack/echo/v4"
 	echomiddleware "github.com/labstack/echo/v4/middleware"
-	"github.com/rs/zerolog"
 	api "github.com/welthee/dinonce/v2/internal/api/generated"
 	"github.com/ziflex/lecho/v3"
 )
@@ -196,8 +196,10 @@ func (h *Handler) GetTickets(ctx echo.Context, lineageId string, params api.GetT
 
 func (h *Handler) Start() error {
 	h.e.Use(echomiddleware.Recover())
+	h.e.Use(echomiddleware.RequestID())
+
+	h.enableLoggingMiddleware()
 	h.enablePrometheus()
-	h.enableLoggerMiddlewares()
 
 	if err := h.enableOpenApiValidatorMiddleware(); err != nil {
 		return err
@@ -222,52 +224,40 @@ func (h *Handler) enablePrometheus() {
 	p.Use(h.e)
 }
 
-func (h *Handler) enableLoggerMiddlewares() {
+func (h *Handler) enableLoggingMiddleware() {
 	logger := lecho.New(
-		os.Stdout,
+		log.Logger,
 		lecho.WithTimestamp(),
-		lecho.WithLevel(1), //meaning DEBUG
+		lecho.WithCaller(),
+		lecho.WithField("component", "papi"),
 	)
 
 	h.e.Logger = logger
 
-	h.e.Use(echomiddleware.RequestIDWithConfig(echomiddleware.RequestIDConfig{
-		Skipper: func(e echo.Context) bool {
-			return e.Request().RequestURI == "/metrics"
-		},
-	}))
+	skipper := func(e echo.Context) bool {
+		userAgent := e.Request().UserAgent()
+		re := regexp.MustCompile(`kube-probe|prometheus`)
+		return re.MatchString(strings.ToLower(userAgent))
+	}
 
-	h.e.Use(lecho.Middleware(lecho.Config{
-		Skipper: func(e echo.Context) bool {
-			if e.Request().RequestURI == "/metrics" {
-				return true
-			}
-
-			userAgent := e.Request().UserAgent()
-			return strings.Contains(userAgent, "kube-probe")
-		},
-		Logger: logger,
-	}))
-
-	requestBodyLogger := zerolog.New(os.Stderr).With().
-		Timestamp().
-		Logger()
-
-	h.e.Use(echomiddleware.BodyDumpWithConfig(echomiddleware.BodyDumpConfig{
-		Skipper: func(e echo.Context) bool {
-			return e.Request().RequestURI == "/metrics"
-		},
-		Handler: func(e echo.Context, req []byte, resp []byte) {
-			requestBodyLogger.WithLevel(zerolog.TraceLevel).
-				Str("component", "api").
-				Str("uri", e.Request().RequestURI).
-				Str("method", e.Request().Method).
-				Int("response_code", e.Response().Status).
-				Bytes("req", req).
-				Bytes("resp", resp).
+	dumpConfig := echomiddleware.BodyDumpConfig{
+		Skipper: skipper,
+		Handler: func(c echo.Context, reqBody, resBody []byte) {
+			log.Ctx(c.Request().Context()).Info().
+				Str("requestBody", string(reqBody)).
+				Str("responseBody", string(resBody)).
 				Msg("")
 		},
-	}))
+	}
+
+	lechoConfig := lecho.Config{
+		Skipper:      skipper,
+		Logger:       logger,
+		RequestIDKey: "traceId",
+	}
+
+	h.e.Use(echomiddleware.BodyDumpWithConfig(dumpConfig))
+	h.e.Use(lecho.Middleware(lechoConfig))
 }
 
 func (h *Handler) enableOpenApiValidatorMiddleware() error {

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"github.com/etherlabsio/healthcheck/v2"
+	"github.com/rs/zerolog"
 	"github.com/welthee/dinonce/v2/internal/ticket"
 	"github.com/welthee/dinonce/v2/internal/ticket/psql"
 	"net/http"
@@ -15,7 +16,6 @@ import (
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
-	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
 	"github.com/welthee/dinonce/v2/internal/api"
@@ -35,13 +35,6 @@ const backendKindPostgres = "postgres"
 const postgresMigrationsDir = "file://./scripts/psql/migrations"
 
 func main() {
-	log.Info().Msg("starting ticketing service")
-
-	zerolog.SetGlobalLevel(zerolog.DebugLevel)
-	defaultContextLogger := zerolog.New(os.Stdout)
-	defaultContextLogger.With().Str("logger", "default-context-logger")
-	zerolog.DefaultContextLogger = &defaultContextLogger
-
 	viper.SetConfigName("config")
 	viper.SetConfigType("yaml")
 	viper.AddConfigPath("/opt/dinonce/config")
@@ -52,6 +45,22 @@ func main() {
 	if err != nil {
 		log.Fatal().Err(err).Msg("can not read config file")
 	}
+
+	logLevel, err := zerolog.ParseLevel(viper.GetString("logger.level"))
+	if err != nil {
+		logLevel = zerolog.InfoLevel
+	}
+
+	switch viper.GetString("logger.kind") {
+	case "console":
+		log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
+		log.Info().Str("level", logLevel.String()).Msg("using console logger")
+	default:
+		log.Info().Str("level", logLevel.String()).Msg("using JSON logger")
+	}
+
+	zerolog.SetGlobalLevel(logLevel)
+	zerolog.DefaultContextLogger = &log.Logger
 
 	healthCheckers := make(map[string]healthcheck.CheckerFunc)
 
@@ -99,6 +108,8 @@ func main() {
 
 			svc = psql.NewServicer(db)
 		}
+
+		log.Info().Msg("starting ticketing service")
 
 		apiHandler := api.NewHandler(svc)
 
