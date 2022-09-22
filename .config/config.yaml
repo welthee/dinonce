@@ -1,3 +1,6 @@
+logger:
+  kind: console
+  level: debug
 backendKind: postgres
 backendConfig:
   host: localhost
