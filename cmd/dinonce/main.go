@@ -46,9 +46,14 @@ func main() {
 		log.Fatal().Err(err).Msg("can not read config file")
 	}
 
-	logLevel, err := zerolog.ParseLevel(viper.GetString("logger.level"))
+	logLevelStr := viper.GetString("logger.level")
+	if logLevelStr == "" {
+		logLevelStr = zerolog.InfoLevel.String()
+	}
+
+	logLevel, err := zerolog.ParseLevel(logLevelStr)
 	if err != nil {
-		logLevel = zerolog.InfoLevel
+		log.Fatal().Str("provided", logLevelStr).Msg("invalid log level")
 	}
 
 	switch viper.GetString("logger.kind") {
