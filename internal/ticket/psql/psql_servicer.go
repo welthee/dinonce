@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"github.com/welthee/dinonce/v2/internal/ticket"
 	"math"
 	"math/rand"
 	"time"
@@ -14,6 +13,7 @@ import (
 	_ "github.com/lib/pq"
 	"github.com/rs/zerolog/log"
 	api "github.com/welthee/dinonce/v2/internal/api/generated"
+	"github.com/welthee/dinonce/v2/internal/ticket"
 )
 
 // Optimistic lock retry constants
@@ -242,6 +242,10 @@ func (p *Servicer) tryLeaseTicket(ctx context.Context, lineageId string, request
 
 				return nil, true, ticket.ErrTooManyConcurrentRequests
 			default:
+				log.Ctx(ctx).Error().
+					Err(err).
+					Msg("can not lease due to unhandled error")
+
 				return nil, false, err
 			}
 		}
@@ -489,6 +493,10 @@ func (p *Servicer) tryCloseTicket(ctx context.Context, lineageId string, ticketE
 
 				return true, ticket.ErrTooManyConcurrentRequests
 			default:
+				log.Ctx(ctx).Error().
+					Err(err).
+					Msg("can not close due to unhandled error")
+
 				return false, err
 			}
 		}
