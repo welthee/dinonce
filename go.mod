@@ -5,13 +5,13 @@ go 1.19
 require (
 	github.com/deepmap/oapi-codegen v1.12.4
 	github.com/etherlabsio/healthcheck/v2 v2.0.0
-	github.com/getkin/kin-openapi v0.115.0
+	github.com/getkin/kin-openapi v0.116.0
 	github.com/golang-migrate/migrate/v4 v4.15.2
 	github.com/google/uuid v1.3.0
 	github.com/labstack/echo-contrib v0.14.1
 	github.com/labstack/echo/v4 v4.10.2
-	github.com/lib/pq v1.10.7
-	github.com/rs/zerolog v1.29.0
+	github.com/lib/pq v1.10.9
+	github.com/rs/zerolog v1.29.1
 	github.com/spf13/viper v1.15.0
 	github.com/ziflex/lecho/v3 v3.5.0
 )
