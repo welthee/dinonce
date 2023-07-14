@@ -4,20 +4,23 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/etherlabsio/healthcheck/v2"
-	"github.com/rs/zerolog"
-	"github.com/welthee/dinonce/v2/internal/ticket"
-	"github.com/welthee/dinonce/v2/internal/ticket/psql"
 	"net/http"
 	"os"
 	"os/signal"
 	"time"
+
+	"github.com/etherlabsio/healthcheck/v2"
+	"github.com/rs/zerolog"
+
+	"github.com/welthee/dinonce/v2/internal/ticket"
+	"github.com/welthee/dinonce/v2/internal/ticket/psql"
 
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
+
 	"github.com/welthee/dinonce/v2/internal/api"
 )
 
@@ -38,7 +41,7 @@ func main() {
 	viper.SetConfigName("config")
 	viper.SetConfigType("yaml")
 	viper.AddConfigPath("/opt/dinonce/config")
-	viper.AddConfigPath("$HOME/.dinonce/config")
+	viper.AddConfigPath("$HOME/.config/dinonce")
 	viper.AddConfigPath(".config")
 
 	err := viper.ReadInConfig()
