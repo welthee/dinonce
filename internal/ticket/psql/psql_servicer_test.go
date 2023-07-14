@@ -4,11 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/welthee/dinonce/v2/internal/ticket"
-	"github.com/welthee/dinonce/v2/internal/ticket/psql"
 	"os"
 	"sync"
 	"testing"
+
+	"github.com/welthee/dinonce/v2/internal/ticket"
+	"github.com/welthee/dinonce/v2/internal/ticket/psql"
 
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/postgres"
@@ -16,6 +17,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+
 	api "github.com/welthee/dinonce/v2/internal/api/generated"
 )
 
@@ -50,7 +52,7 @@ func init() {
 		log.Fatal().Err(err).Msg("can not get db instance")
 	}
 
-	m, err := migrate.NewWithDatabaseInstance("file://../../scripts/psql/migrations", "postgres", driver)
+	m, err := migrate.NewWithDatabaseInstance("file://../../../scripts/psql/migrations", "postgres", driver)
 	if err != nil {
 		log.Fatal().Err(err).Msg("can not migrate database schema")
 	}

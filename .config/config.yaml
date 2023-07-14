@@ -8,3 +8,4 @@ backendConfig:
   user: postgres
   password: postgres
   databaseName: postgres
+  migrationsDir: "file://./scripts/psql/migrations"
