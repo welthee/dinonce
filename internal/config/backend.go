@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/spf13/viper"
 )
@@ -14,10 +15,14 @@ const (
 )
 
 func newBackendConfig(cfg *Config) error {
-	backend := viper.GetString(backendKindKey)
-	cfg.BackendKind = backend
+	kind := viper.GetString(backendKindKey)
+	if strings.TrimSpace(kind) == "" {
+		return fmt.Errorf("missing config %s: %w", backendConfigKey, ErrInvalidConfigValue)
+	}
 
-	switch backend {
+	cfg.BackendKind = kind
+
+	switch kind {
 	case BackendKindPostgres:
 		backendCfg, err := newPostgresConfig()
 		if err != nil {
@@ -25,7 +30,7 @@ func newBackendConfig(cfg *Config) error {
 		}
 		cfg.BackendPostgres = backendCfg
 	default:
-		return fmt.Errorf("backend_config=%s not supported: %w", backend, ErrInvalidConfigValue)
+		return fmt.Errorf("%s=%s not supported: %w", backendConfigKey, kind, ErrInvalidConfigValue)
 	}
 
 	return nil
