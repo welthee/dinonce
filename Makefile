@@ -22,13 +22,14 @@ oapi:
 
 start-postgres:
 	docker run \
-		--rm \
-		--name dinonce-postgres \
-    -p 5433:5432 \
-    -e POSTGRES_USER=postgres \
-    -e POSTGRES_PASSWORD=postgres \
-    -e POSTGRES_DB=postgres \
-    -d postgres
+  --rm \
+  --name dinonce-postgres \
+  --publish 5433:5432 \
+  --env POSTGRES_USER=postgres \
+  --env POSTGRES_PASSWORD=postgres \
+  --env POSTGRES_DB=postgres \
+  --detach \
+  postgres
 
 stop-postgres:
 	docker stop dinonce-postgres
