@@ -20,6 +20,20 @@ oapi:
 		mkdir -p $(OAPI_GENERATED_DIR)
 		$(OAPI_CODEGEN) --config=$(DEEPMAP_CONFIG_FILE) $(OAPI_SCHEMA_FILE)
 
+start-postgres:
+	docker run \
+  --rm \
+  --name dinonce-postgres \
+  --publish 5433:5432 \
+  --env POSTGRES_USER=postgres \
+  --env POSTGRES_PASSWORD=postgres \
+  --env POSTGRES_DB=postgres \
+  --detach \
+  postgres
+
+stop-postgres:
+	docker stop dinonce-postgres
+
 clean:
 		rm -rf $(DIST_DIR)
 		rm -rf $(OAPI_GENERATED_DIR)
