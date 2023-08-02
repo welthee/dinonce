@@ -4,18 +4,21 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/rs/zerolog/log"
-	"github.com/welthee/dinonce/v2/internal/ticket"
 	"net/http"
 	"regexp"
 	"strings"
+
+	"github.com/rs/zerolog/log"
+
+	"github.com/welthee/dinonce/v2/internal/ticket"
 
 	"github.com/deepmap/oapi-codegen/pkg/middleware"
 	"github.com/labstack/echo-contrib/prometheus"
 	"github.com/labstack/echo/v4"
 	echomiddleware "github.com/labstack/echo/v4/middleware"
-	api "github.com/welthee/dinonce/v2/internal/api/generated"
 	"github.com/ziflex/lecho/v3"
+
+	api "github.com/welthee/dinonce/v2/internal/api/generated"
 )
 
 const port = 5010
