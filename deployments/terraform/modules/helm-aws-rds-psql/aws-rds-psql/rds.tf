@@ -1,6 +1,6 @@
 module "db" {
   source  = "terraform-aws-modules/rds-aurora/aws"
-  version = "~> 8.0"
+  version = "~> 9.0"
 
   name           = var.name
   database_name  = var.name
