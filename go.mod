@@ -3,7 +3,7 @@ module github.com/welthee/dinonce/v2
 go 1.20
 
 require (
-	github.com/deepmap/oapi-codegen v1.13.2
+	github.com/deepmap/oapi-codegen/v2 v2.7.0
 	github.com/etherlabsio/healthcheck/v2 v2.0.0
 	github.com/getkin/kin-openapi v0.118.0
 	github.com/golang-migrate/migrate/v4 v4.16.2
