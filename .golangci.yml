@@ -1,0 +1,50 @@
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - errorlint
+    - gocritic
+    - gosec
+    - govet
+    - ineffassign
+    - misspell
+    - revive
+    - staticcheck
+    - unconvert
+    - unused
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters:
+          - errcheck
+          - gosec
+      - path: internal/api/generated/
+        linters:
+          - errcheck
+          - errorlint
+          - gocritic
+          - gosec
+          - govet
+          - revive
+          - staticcheck
+          - unused
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+
+linters-settings:
+  gosec:
+    excludes:
+      - G404 # math/rand for jitter is acceptable
+  revive:
+    rules:
+      - name: exported
+        disabled: true # internal/ doesn't need exported docs

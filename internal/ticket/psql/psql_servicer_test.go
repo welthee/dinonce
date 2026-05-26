@@ -4,8 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/welthee/dinonce/v2/internal/ticket"
-	"github.com/welthee/dinonce/v2/internal/ticket/psql"
+	"github.com/matelang/dinonce/v3/internal/ticket"
+	"github.com/matelang/dinonce/v3/internal/ticket/psql"
 	"os"
 	"sync"
 	"testing"
@@ -16,7 +16,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	api "github.com/welthee/dinonce/v2/internal/api/generated"
+	api "github.com/matelang/dinonce/v3/internal/api/generated"
 )
 
 const (

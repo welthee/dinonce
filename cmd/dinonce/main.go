@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"github.com/etherlabsio/healthcheck/v2"
 	"github.com/rs/zerolog"
-	"github.com/welthee/dinonce/v2/internal/ticket"
-	"github.com/welthee/dinonce/v2/internal/ticket/psql"
+	"github.com/matelang/dinonce/v3/internal/ticket"
+	"github.com/matelang/dinonce/v3/internal/ticket/psql"
 	"net/http"
 	"os"
 	"os/signal"
@@ -18,7 +18,7 @@ import (
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
-	"github.com/welthee/dinonce/v2/internal/api"
+	"github.com/matelang/dinonce/v3/internal/api"
 )
 
 const ShutDownTimeout = 30 * time.Second

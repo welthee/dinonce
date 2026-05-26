@@ -1,6 +1,6 @@
-module github.com/welthee/dinonce/v2
+module github.com/matelang/dinonce/v3
 
-go 1.20
+go 1.24
 
 require (
 	github.com/deepmap/oapi-codegen v1.13.2

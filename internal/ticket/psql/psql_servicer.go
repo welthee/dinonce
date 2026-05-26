@@ -12,8 +12,8 @@ import (
 	"github.com/lib/pq"
 	_ "github.com/lib/pq"
 	"github.com/rs/zerolog/log"
-	api "github.com/welthee/dinonce/v2/internal/api/generated"
-	"github.com/welthee/dinonce/v2/internal/ticket"
+	api "github.com/matelang/dinonce/v3/internal/api/generated"
+	"github.com/matelang/dinonce/v3/internal/ticket"
 )
 
 // Optimistic lock retry constants

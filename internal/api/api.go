@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/rs/zerolog/log"
-	"github.com/welthee/dinonce/v2/internal/ticket"
+	"github.com/matelang/dinonce/v3/internal/ticket"
 	"net/http"
 	"regexp"
 	"strings"
@@ -14,7 +14,7 @@ import (
 	"github.com/labstack/echo-contrib/prometheus"
 	"github.com/labstack/echo/v4"
 	echomiddleware "github.com/labstack/echo/v4/middleware"
-	api "github.com/welthee/dinonce/v2/internal/api/generated"
+	api "github.com/matelang/dinonce/v3/internal/api/generated"
 	"github.com/ziflex/lecho/v3"
 )
 
