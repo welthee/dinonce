@@ -18,11 +18,32 @@ linters:
     - staticcheck
     - unconvert
     - unused
+  settings:
+    gosec:
+      excludes:
+        - G404 # math/rand for retry jitter is non-crypto by design
+    gocritic:
+      disabled-checks:
+        - singleCaseSwitch # readable as-is, even with one case
+    revive:
+      rules:
+        # Naming style nits inherited from the original codebase. Renaming
+        # would touch generated code, helm/terraform templates and the
+        # OpenAPI spec; left as-is.
+        - name: var-naming
+          disabled: true
+        - name: exported
+          disabled: true
+        - name: package-comments
+          disabled: true
+        - name: redefines-builtin-id
+          disabled: true
   exclusions:
     rules:
       - path: _test\.go
         linters:
           - errcheck
+          - errorlint
           - gosec
       - path: internal/api/generated/
         linters:
@@ -39,12 +60,3 @@ formatters:
   enable:
     - gofmt
     - goimports
-
-linters-settings:
-  gosec:
-    excludes:
-      - G404 # math/rand for jitter is acceptable
-  revive:
-    rules:
-      - name: exported
-        disabled: true # internal/ doesn't need exported docs

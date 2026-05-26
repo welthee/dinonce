@@ -261,4 +261,3 @@ func newHealthServer(checkers map[string]healthcheck.CheckerFunc) *http.Server {
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 }
-

@@ -201,7 +201,7 @@ func (p *Servicer) LeaseTicket(ctx context.Context, lineageId string, request *a
 	for i, n := range nonces {
 		l := api.TicketLease{
 			LineageId: lineageId,
-			Nonce:     int(n), //TODO - check correct cast
+			Nonce:     int(n), // TODO - check correct cast
 			ExtId:     request.ExtIds[i],
 			State:     api.TicketLeaseStateLeased,
 		}

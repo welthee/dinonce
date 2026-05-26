@@ -109,7 +109,9 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
           check-latest: true
-      - run: go tool gosec -quiet -exclude-dir=internal/api/generated ./...
+      # G404 (math/rand for retry jitter) is an intentional non-crypto use;
+      # the .golangci.yml linter-settings excludes it too.
+      - run: go tool gosec -quiet -exclude=G404 -exclude-dir=internal/api/generated ./...
 
   codeql:
     name: codeql

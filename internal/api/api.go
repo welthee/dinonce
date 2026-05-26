@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/rs/zerolog/log"
-	"github.com/matelang/dinonce/v3/internal/ticket"
 	"net/http"
 	"regexp"
 	"strings"
@@ -14,9 +12,11 @@ import (
 	"github.com/labstack/echo/v4"
 	echomiddleware "github.com/labstack/echo/v4/middleware"
 	oapimiddleware "github.com/oapi-codegen/echo-middleware"
+	"github.com/rs/zerolog/log"
 	"github.com/ziflex/lecho/v3"
 
 	api "github.com/matelang/dinonce/v3/internal/api/generated"
+	"github.com/matelang/dinonce/v3/internal/ticket"
 )
 
 const port = 5010
@@ -67,15 +67,13 @@ func (h *Handler) CreateLineage(ctx echo.Context) error {
 
 	resp, err := h.servicer.CreateLineage(ctx.Request().Context(), req)
 	if err != nil {
-		switch err {
-		case ticket.ErrInvalidRequest:
+		if errors.Is(err, ticket.ErrInvalidRequest) {
 			return ctx.JSON(http.StatusBadRequest, api.Error{
 				Code:    ErrorCodeBadRequest,
 				Message: err.Error(),
 			})
-		default:
-			return err
 		}
+		return err
 	}
 
 	return ctx.JSON(http.StatusOK, resp)
@@ -84,15 +82,13 @@ func (h *Handler) CreateLineage(ctx echo.Context) error {
 func (h *Handler) GetLineageByExtId(ctx echo.Context, params api.GetLineageByExtIdParams) error {
 	resp, err := h.servicer.GetLineage(ctx.Request().Context(), params.ExtId)
 	if err != nil {
-		switch err {
-		case ticket.ErrNoSuchLineage:
+		if errors.Is(err, ticket.ErrNoSuchLineage) {
 			return ctx.JSON(http.StatusNotFound, api.Error{
 				Code:    ErrorCodeNotFound,
 				Message: err.Error(),
 			})
-		default:
-			return err
 		}
+		return err
 	}
 
 	return ctx.JSON(http.StatusOK, resp)
@@ -106,18 +102,18 @@ func (h *Handler) LeaseTicket(ctx echo.Context, lineageId string) error {
 
 	resp, err := h.servicer.LeaseTicket(ctx.Request().Context(), lineageId, req)
 	if err != nil {
-		switch err {
-		case ticket.ErrInvalidRequest, ticket.ErrNoSuchLineage:
+		switch {
+		case errors.Is(err, ticket.ErrInvalidRequest), errors.Is(err, ticket.ErrNoSuchLineage):
 			return ctx.JSON(http.StatusBadRequest, api.Error{
 				Code:    ErrorCodeBadRequest,
 				Message: err.Error(),
 			})
-		case ticket.ErrTooManyLeasedTickets:
+		case errors.Is(err, ticket.ErrTooManyLeasedTickets):
 			return ctx.JSON(http.StatusTooManyRequests, api.Error{
 				Code:    ErrorCodeTooManyLeasedTickets,
 				Message: err.Error(),
 			})
-		case ticket.ErrTooManyConcurrentRequests:
+		case errors.Is(err, ticket.ErrTooManyConcurrentRequests):
 			return ctx.JSON(http.StatusConflict, api.Error{
 				Code:    ErrTooManyConcurrentRequests,
 				Message: err.Error(),
@@ -133,10 +129,10 @@ func (h *Handler) LeaseTicket(ctx echo.Context, lineageId string) error {
 func (h *Handler) GetTicket(ctx echo.Context, lineageId string, ticketExtId string) error {
 	resp, err := h.servicer.GetTicket(ctx.Request().Context(), lineageId, ticketExtId)
 	if err != nil {
-		switch err {
-		case ticket.ErrNoSuchTicket:
+		switch {
+		case errors.Is(err, ticket.ErrNoSuchTicket):
 			return ctx.NoContent(http.StatusNotFound)
-		case ticket.ErrInvalidRequest:
+		case errors.Is(err, ticket.ErrInvalidRequest):
 			return ctx.JSON(http.StatusBadRequest, api.Error{
 				Code:    ErrorCodeBadRequest,
 				Message: err.Error(),
@@ -165,15 +161,15 @@ func (h *Handler) UpdateTicket(ctx echo.Context, lineageId string, ticketExtId s
 		ctx.Error(errors.New("state must be one of:(released,closed)"))
 	}
 	if err != nil {
-		switch err {
-		case ticket.ErrInvalidRequest, ticket.ErrNoSuchLineage:
+		switch {
+		case errors.Is(err, ticket.ErrInvalidRequest), errors.Is(err, ticket.ErrNoSuchLineage):
 			return ctx.JSON(http.StatusBadRequest, api.Error{
 				Code:    ErrorCodeBadRequest,
 				Message: err.Error(),
 			})
-		case ticket.ErrNoSuchTicket:
+		case errors.Is(err, ticket.ErrNoSuchTicket):
 			return ctx.NoContent(http.StatusNotFound)
-		case ticket.ErrTooManyConcurrentRequests:
+		case errors.Is(err, ticket.ErrTooManyConcurrentRequests):
 			return ctx.JSON(http.StatusConflict, api.Error{
 				Code:    ErrTooManyConcurrentRequests,
 				Message: err.Error(),
@@ -190,10 +186,10 @@ func (h *Handler) GetTickets(ctx echo.Context, lineageId string, params api.GetT
 	rCtx := ctx.Request().Context()
 	resp, err := h.servicer.GetTickets(rCtx, lineageId, params.TicketExtIds)
 	if err != nil {
-		switch err {
-		case ticket.ErrNoSuchTicket:
+		switch {
+		case errors.Is(err, ticket.ErrNoSuchTicket):
 			return ctx.NoContent(http.StatusNotFound)
-		case ticket.ErrInvalidRequest:
+		case errors.Is(err, ticket.ErrInvalidRequest):
 			return ctx.JSON(http.StatusBadRequest, api.Error{
 				Code:    ErrorCodeBadRequest,
 				Message: err.Error(),
@@ -282,7 +278,7 @@ func (h *Handler) enableLoggingMiddleware() {
 }
 
 func (h *Handler) enableOpenApiValidatorMiddleware() error {
-	swagger, err := api.GetSwagger()
+	swagger, err := api.GetSpec()
 	if err != nil {
 		return err
 	}
