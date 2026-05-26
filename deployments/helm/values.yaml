@@ -1,9 +1,10 @@
 replicaCount: 3
 
 image:
-  repository: welthee/dinonce
+  repository: ghcr.io/matelang/dinonce
   pullPolicy: IfNotPresent
-  tag: "latest"
+  # Defaults to .Chart.AppVersion when empty.
+  tag: ""
 
 imagePullSecrets: []
 nameOverride: ""

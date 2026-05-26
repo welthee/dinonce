@@ -2,5 +2,5 @@ apiVersion: v2
 name: dinonce
 description: A Helm chart for dinonce, a distributed nonce tracker for blockchain projects
 type: application
-version: 0.0.1
-appVersion: "0.0.1"
+version: 3.0.0
+appVersion: "3.0.0"
