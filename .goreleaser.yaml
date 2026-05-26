@@ -1,0 +1,130 @@
+# GoReleaser configuration. Drives the release pipeline triggered when a
+# git tag is pushed (typically by release-please). Produces multi-arch
+# archives, multi-arch container manifests, checksums, an SBOM, and cosign
+# attestations. See https://goreleaser.com/ for the field reference.
+version: 2
+
+project_name: dinonce
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: dinonce
+    main: ./cmd/dinonce
+    binary: dinonce
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X main.version={{ .Version }}
+      - -X main.commit={{ .ShortCommit }}
+      - -X main.date={{ .Date }}
+
+archives:
+  - id: dinonce
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else }}{{ .Arch }}{{ end }}
+    files:
+      - LICENSE
+      - README.md
+      - CHANGELOG.md
+      - scripts/psql/migrations/*
+
+checksum:
+  name_template: "checksums.txt"
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  # Disabled here because release-please drives the human-facing CHANGELOG.
+  disable: true
+
+dockers:
+  - id: amd64
+    use: buildx
+    goos: linux
+    goarch: amd64
+    image_templates:
+      - "ghcr.io/matelang/dinonce:{{ .Version }}-amd64"
+      - "ghcr.io/matelang/dinonce:latest-amd64"
+    build_flag_templates:
+      - "--platform=linux/amd64"
+      - "--build-arg=VERSION={{ .Version }}"
+      - "--build-arg=COMMIT={{ .ShortCommit }}"
+      - "--build-arg=DATE={{ .Date }}"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
+      - "--label=org.opencontainers.image.created={{ .Date }}"
+
+  - id: arm64
+    use: buildx
+    goos: linux
+    goarch: arm64
+    image_templates:
+      - "ghcr.io/matelang/dinonce:{{ .Version }}-arm64"
+      - "ghcr.io/matelang/dinonce:latest-arm64"
+    build_flag_templates:
+      - "--platform=linux/arm64"
+      - "--build-arg=VERSION={{ .Version }}"
+      - "--build-arg=COMMIT={{ .ShortCommit }}"
+      - "--build-arg=DATE={{ .Date }}"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
+      - "--label=org.opencontainers.image.created={{ .Date }}"
+
+docker_manifests:
+  - name_template: "ghcr.io/matelang/dinonce:{{ .Version }}"
+    image_templates:
+      - "ghcr.io/matelang/dinonce:{{ .Version }}-amd64"
+      - "ghcr.io/matelang/dinonce:{{ .Version }}-arm64"
+  - name_template: "ghcr.io/matelang/dinonce:latest"
+    image_templates:
+      - "ghcr.io/matelang/dinonce:latest-amd64"
+      - "ghcr.io/matelang/dinonce:latest-arm64"
+
+sboms:
+  - id: archive
+    artifacts: archive
+    documents:
+      - "{{ .ArtifactName }}.sbom.cyclonedx.json"
+    cmd: syft
+    args: ["$artifact", "--output", "cyclonedx-json={{ .Document }}"]
+
+# Cosign keyless signing via GitHub's OIDC token. The release workflow
+# must set permissions: id-token: write for this to succeed.
+signs:
+  - id: archives
+    cmd: cosign
+    artifacts: checksum
+    output: true
+    args:
+      - sign-blob
+      - --yes
+      - --output-signature=${signature}
+      - --output-certificate=${certificate}
+      - ${artifact}
+
+docker_signs:
+  - id: images
+    cmd: cosign
+    artifacts: manifests
+    output: true
+    args:
+      - sign
+      - --yes
+      - ${artifact}@${digest}

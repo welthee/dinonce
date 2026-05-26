@@ -1,0 +1,13 @@
+.git
+.github
+.idea
+.vscode
+.terraform*
+*.tfstate*
+dist/
+coverage.out
+docker-compose.test.yaml
+gopher.png
+docs/
+deployments/terraform/
+*.md
