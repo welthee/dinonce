@@ -15,8 +15,9 @@ import (
 
 	"github.com/etherlabsio/healthcheck/v2"
 	"github.com/golang-migrate/migrate/v4"
-	"github.com/golang-migrate/migrate/v4/database/postgres"
+	pgxmigrate "github.com/golang-migrate/migrate/v4/database/pgx/v5"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
+	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
@@ -189,7 +190,7 @@ func openPostgres() (*sql.DB, func(), error) {
 	connString := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable",
 		cfg.Host, cfg.Port, cfg.User, cfg.Password, cfg.DatabaseName)
 
-	db, err := sql.Open("postgres", connString)
+	db, err := sql.Open("pgx", connString)
 	if err != nil {
 		return nil, nil, fmt.Errorf("open postgres: %w", err)
 	}
@@ -210,7 +211,7 @@ func openPostgres() (*sql.DB, func(), error) {
 		db.SetConnMaxLifetime(30 * time.Minute)
 	}
 
-	driver, err := postgres.WithInstance(db, &postgres.Config{})
+	driver, err := pgxmigrate.WithInstance(db, &pgxmigrate.Config{})
 	if err != nil {
 		_ = db.Close()
 		return nil, nil, fmt.Errorf("acquire migrator driver: %w", err)

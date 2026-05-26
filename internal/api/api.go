@@ -10,12 +10,13 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/deepmap/oapi-codegen/pkg/middleware"
-	"github.com/labstack/echo-contrib/prometheus"
+	"github.com/labstack/echo-contrib/echoprometheus"
 	"github.com/labstack/echo/v4"
 	echomiddleware "github.com/labstack/echo/v4/middleware"
-	api "github.com/matelang/dinonce/v3/internal/api/generated"
+	oapimiddleware "github.com/oapi-codegen/echo-middleware"
 	"github.com/ziflex/lecho/v3"
+
+	api "github.com/matelang/dinonce/v3/internal/api/generated"
 )
 
 const port = 5010
@@ -240,8 +241,8 @@ func (h *Handler) Stop(ctx context.Context) error {
 }
 
 func (h *Handler) enablePrometheus() {
-	p := prometheus.NewPrometheus("dinonce", nil)
-	p.Use(h.e)
+	h.e.Use(echoprometheus.NewMiddleware("dinonce"))
+	h.e.GET("/metrics", echoprometheus.NewHandler())
 }
 
 func (h *Handler) enableLoggingMiddleware() {
@@ -285,7 +286,7 @@ func (h *Handler) enableOpenApiValidatorMiddleware() error {
 	if err != nil {
 		return err
 	}
-	h.e.Use(middleware.OapiRequestValidatorWithOptions(swagger, &middleware.Options{
+	h.e.Use(oapimiddleware.OapiRequestValidatorWithOptions(swagger, &oapimiddleware.Options{
 		Skipper: func(e echo.Context) bool {
 			uri := e.Request().RequestURI
 			return uri == "/metrics" || uri == "/version"

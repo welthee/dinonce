@@ -12,9 +12,10 @@
 
 Please **do not** open a public GitHub issue for security-sensitive reports.
 
-Instead, use GitHub's private vulnerability reporting on this repository
-(*Security → Report a vulnerability*). If that is unavailable, email
-`mate.lang@binhatch.com` with the subject prefix `[dinonce-security]`.
+Use GitHub's private vulnerability reporting on this repository
+(*Security → Report a vulnerability*). The maintainer is notified
+automatically. If GitHub private reporting is unavailable to you, contact
+the maintainer through the email address listed on their GitHub profile.
 
 You can expect:
 

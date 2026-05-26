@@ -5,13 +5,13 @@ import (
 	"database/sql"
 	"errors"
 	"math"
-	"math/rand"
+	"math/rand/v2"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/lib/pq"
-	_ "github.com/lib/pq"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/rs/zerolog/log"
+
 	api "github.com/matelang/dinonce/v3/internal/api/generated"
 	"github.com/matelang/dinonce/v3/internal/ticket"
 )
@@ -88,8 +88,9 @@ func (p *Servicer) CreateLineage(ctx context.Context, request *api.LineageCreati
 	rows, err := p.db.QueryContext(ctx, queryStringInsertLineage,
 		aUuid.String(), request.ExtId, request.StartLeasingFrom, request.MaxLeasedNonceCount)
 	if err != nil {
-		if pqErr, ok := err.(*pq.Error); ok {
-			switch pqErr.Constraint {
+		var pqErr *pgconn.PgError
+		if errors.As(err, &pqErr) {
+			switch pqErr.ConstraintName {
 			case sqlErrConstraintLineagesExtIdx:
 				return nil, ticket.ErrInvalidRequest
 			default:
@@ -217,9 +218,10 @@ func (p *Servicer) tryLeaseTicket(ctx context.Context, lineageId string, request
 		return nil, false, err
 	}
 
-	rows, err := p.db.QueryContext(ctx, queryStringCreateTicket, lineageId, version, pq.Array(request.ExtIds))
+	rows, err := p.db.QueryContext(ctx, queryStringCreateTicket, lineageId, version, stringArray(request.ExtIds))
 	if err != nil {
-		if pqErr, ok := err.(*pq.Error); ok {
+		var pqErr *pgconn.PgError
+		if errors.As(err, &pqErr) {
 			switch pqErr.Code {
 			// 22P02 INVALID TEXT REPRESENTATION
 			case "22P02":
@@ -276,7 +278,8 @@ func (p *Servicer) GetTicket(ctx context.Context, lineageId string, ticketExtId 
 	row := p.db.QueryRowContext(ctx, queryStringSelectTicket, lineageId, ticketExtId)
 
 	if err := row.Err(); err != nil {
-		if pqErr, ok := err.(*pq.Error); ok {
+		var pqErr *pgconn.PgError
+		if errors.As(err, &pqErr) {
 			switch pqErr.Code {
 			// 22P02 INVALID TEXT REPRESENTATION
 			case "22P02":
@@ -343,11 +346,12 @@ func (p *Servicer) GetTickets(ctx context.Context, lineageId string, ticketExtId
 	var stateStr string
 	var extId string
 
-	rows, err := p.db.QueryContext(ctx, queryStringSelectTickets, lineageId, pq.Array(ticketExtIds))
+	rows, err := p.db.QueryContext(ctx, queryStringSelectTickets, lineageId, stringArray(ticketExtIds))
 	defer rowCloser(rows)
 
 	if err != nil {
-		if pqErr, ok := err.(*pq.Error); ok {
+		var pqErr *pgconn.PgError
+		if errors.As(err, &pqErr) {
 			switch pqErr.Code {
 			// 22P02 INVALID TEXT REPRESENTATION
 			case "22P02":
@@ -397,7 +401,8 @@ func (p *Servicer) tryReleaseTicket(ctx context.Context, lineageId string, ticke
 
 	rows, err := p.db.QueryContext(ctx, queryStringReleaseTicket, lineageId, version, ticketExtId)
 	if err != nil {
-		if pqErr, ok := err.(*pq.Error); ok {
+		var pqErr *pgconn.PgError
+		if errors.As(err, &pqErr) {
 			switch pqErr.Code {
 			// 22P02 INVALID TEXT REPRESENTATION
 			case "22P02":
@@ -473,7 +478,8 @@ func (p *Servicer) tryCloseTicket(ctx context.Context, lineageId string, ticketE
 
 	_, err = p.db.ExecContext(ctx, queryStringCloseTicket, lineageId, version, ticketExtId)
 	if err != nil {
-		if pqErr, ok := err.(*pq.Error); ok {
+		var pqErr *pgconn.PgError
+		if errors.As(err, &pqErr) {
 			switch pqErr.Code {
 			// 22P02 INVALID TEXT REPRESENTATION
 			case "22P02":
@@ -523,7 +529,8 @@ func (p *Servicer) tryCloseTicket(ctx context.Context, lineageId string, ticketE
 func (p *Servicer) getLineageVersion(ctx context.Context, lineageId string) (int64, error) {
 	rows, err := p.db.QueryContext(ctx, queryStringSelectLineageVersion, lineageId)
 	if err != nil {
-		if pqErr, ok := err.(*pq.Error); ok {
+		var pqErr *pgconn.PgError
+		if errors.As(err, &pqErr) {
 			switch pqErr.Code {
 			// 22P02 INVALID TEXT REPRESENTATION
 			case "22P02":
@@ -559,15 +566,15 @@ func getNonceFromRow(rows *sql.Rows) (*int, error) {
 }
 
 func getNoncesFromRow(rows *sql.Rows) ([]int64, error) {
-	var nonces []int64
 	if !rows.Next() {
 		return nil, errors.New("expected nonce in result set")
 	}
-	if err := rows.Scan(pq.Array(&nonces)); err != nil {
+	var nonces int64Array
+	if err := rows.Scan(&nonces); err != nil {
 		return nil, err
 	}
 
-	return nonces, nil
+	return []int64(nonces), nil
 }
 
 func rowClose(ctx context.Context, rows *sql.Rows) {

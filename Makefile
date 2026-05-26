@@ -2,7 +2,7 @@ SHELL := /bin/bash
 
 DIST_DIR := ./dist
 OAPI_SCHEMA_FILE := api/api.yaml
-OAPI_CONFIG_FILE := api/deepmap/api.yaml
+OAPI_CONFIG_FILE := api/codegen.yaml
 OAPI_GENERATED_DIR := ./internal/api/generated
 
 COMPOSE ?= docker compose
