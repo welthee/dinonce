@@ -16,9 +16,13 @@ import (
 	"github.com/matelang/dinonce/v3/internal/ticket"
 )
 
-// Optimistic lock retry constants
+// Optimistic lock retry constants. The retry budget is sized so single-call
+// success rate stays acceptable under the kind of concurrency we see in the
+// integration tests (~64 contending goroutines on the same lineage row).
+// Callers that exhaust the budget still get a 409 from the API and are
+// expected to retry on their side.
 const (
-	optimisticLockMaxRetryAttempts  = 5
+	optimisticLockMaxRetryAttempts  = 20
 	optimisticLockJitterSleepFactor = 2
 	optimisticLockSleepBase         = 10 * time.Millisecond
 	optimisticLockSleepMax          = 1 * time.Second
@@ -164,18 +168,22 @@ func (p *Servicer) LeaseTicket(ctx context.Context, lineageId string, request *a
 
 	for attempt := 1; shouldRetry && attempt <= optimisticLockMaxRetryAttempts; attempt++ {
 		nonces, shouldRetry, err = p.tryLeaseTicket(ctx, lineageId, request)
-		if err != nil {
-			if shouldRetry {
-				log.Ctx(ctx).Info().
-					Str("lineageId", lineageId).
-					Strs("extId", request.ExtIds).
-					Msg("retrying to lease ticket")
-
-				jitterSleep(attempt, optimisticLockSleepBase, optimisticLockSleepMax)
-			} else {
-				return nil, err
-			}
+		if err == nil {
+			break
 		}
+		if !shouldRetry {
+			return nil, err
+		}
+		log.Ctx(ctx).Info().
+			Str("lineageId", lineageId).
+			Strs("extId", request.ExtIds).
+			Int("attempt", attempt).
+			Msg("retrying to lease ticket")
+
+		jitterSleep(attempt, optimisticLockSleepBase, optimisticLockSleepMax)
+	}
+	if err != nil {
+		return nil, err
 	}
 
 	var leases []api.TicketLease
@@ -312,21 +320,22 @@ func (p *Servicer) ReleaseTicket(ctx context.Context, lineageId string, ticketEx
 
 	for attempt := 1; shouldRetry && attempt <= optimisticLockMaxRetryAttempts; attempt++ {
 		shouldRetry, err = p.tryReleaseTicket(ctx, lineageId, ticketExtId)
-		if err != nil {
-			if shouldRetry {
-				log.Ctx(ctx).Info().
-					Str("lineageId", lineageId).
-					Str("extId", ticketExtId).
-					Msg("retrying to release ticket")
-
-				jitterSleep(attempt, optimisticLockSleepBase, optimisticLockSleepMax)
-			} else {
-				return err
-			}
+		if err == nil {
+			return nil
 		}
+		if !shouldRetry {
+			return err
+		}
+		log.Ctx(ctx).Info().
+			Str("lineageId", lineageId).
+			Str("extId", ticketExtId).
+			Int("attempt", attempt).
+			Msg("retrying to release ticket")
+
+		jitterSleep(attempt, optimisticLockSleepBase, optimisticLockSleepMax)
 	}
 
-	return nil
+	return err
 }
 
 func (p *Servicer) GetTickets(ctx context.Context, lineageId string, ticketExtIds []string) (*api.TicketLeaseResponse, error) {
@@ -438,21 +447,22 @@ func (p *Servicer) CloseTicket(ctx context.Context, lineageId string, ticketExtI
 
 	for attempt := 1; shouldRetry && attempt <= optimisticLockMaxRetryAttempts; attempt++ {
 		shouldRetry, err = p.tryCloseTicket(ctx, lineageId, ticketExtId)
-		if err != nil {
-			if shouldRetry {
-				log.Ctx(ctx).Info().
-					Str("lineageId", lineageId).
-					Str("extId", ticketExtId).
-					Msg("retrying to close ticket")
-
-				jitterSleep(attempt, optimisticLockSleepBase, optimisticLockSleepMax)
-			} else {
-				return err
-			}
+		if err == nil {
+			return nil
 		}
+		if !shouldRetry {
+			return err
+		}
+		log.Ctx(ctx).Info().
+			Str("lineageId", lineageId).
+			Str("extId", ticketExtId).
+			Int("attempt", attempt).
+			Msg("retrying to close ticket")
+
+		jitterSleep(attempt, optimisticLockSleepBase, optimisticLockSleepMax)
 	}
 
-	return nil
+	return err
 }
 
 func (p *Servicer) tryCloseTicket(ctx context.Context, lineageId string, ticketExtId string) (bool, error) {
@@ -522,11 +532,11 @@ func (p *Servicer) getLineageVersion(ctx context.Context, lineageId string) (int
 		}
 		return 0, err
 	}
+	defer rowClose(ctx, rows)
 
 	if !rows.Next() {
 		return 0, ticket.ErrNoSuchLineage
 	}
-	defer rowClose(ctx, rows)
 
 	var v int64
 	if err := rows.Scan(&v); err != nil {

@@ -18,13 +18,12 @@ contribution process is intentionally lightweight.
 ## Development environment
 
 You need a Go toolchain matching the `go` directive in `go.mod` (currently
-1.24) and a running container runtime for integration tests
-(Docker or Podman).
+1.25) and a running container runtime for integration tests
+(Docker or Podman). Dev tools (oapi-codegen, golangci-lint, govulncheck,
+gosec) are declared as `tool` dependencies in `go.mod`, so there is no
+separate install step — `go tool <name>` builds them on first use.
 
 ```sh
-# install pinned dev tools (oapi-codegen, golangci-lint, govulncheck, gosec)
-make tools
-
 # regenerate the OpenAPI server stubs after editing api/api.yaml
 make oapi
 
@@ -34,8 +33,8 @@ make test
 # integration tests against a throwaway Postgres in a container
 make test-integration
 
-# vulnerability scan
-make vuln
+# lint, vulnerability scan, gosec
+make lint vuln sec
 ```
 
 ## Project layout

@@ -13,7 +13,8 @@ Conventional Commits.
 - Module path renamed from `github.com/welthee/dinonce/v2` to
   `github.com/matelang/dinonce/v3`. Major bump because the import path
   changes are breaking for any downstream importer.
-- Bumped minimum Go toolchain to 1.24.
+- Bumped minimum Go toolchain to 1.25 (required by the `tool` directive
+  versions of golangci-lint v2, oapi-codegen v2, govulncheck and gosec).
 - Replaced PostgreSQL driver `github.com/lib/pq` with
   `github.com/jackc/pgx/v5/stdlib`. The `*sql.DB` surface is unchanged.
 - Replaced `github.com/deepmap/oapi-codegen` (archived) with

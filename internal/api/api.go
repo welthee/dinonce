@@ -25,12 +25,22 @@ const ErrorCodeBadRequest = "bad_request"
 const ErrorCodeTooManyLeasedTickets = "too_many_leased_tickets"
 const ErrTooManyConcurrentRequests = "too_many_concurrent_requests"
 
+// BuildInfo describes the binary's build metadata. The main package
+// populates it from -ldflags-injected variables and passes it in here so
+// /version can be served without reaching back into main.
+type BuildInfo struct {
+	Version string `json:"version"`
+	Commit  string `json:"commit"`
+	Date    string `json:"date"`
+}
+
 type Handler struct {
 	e        *echo.Echo
 	servicer ticket.Servicer
+	build    BuildInfo
 }
 
-func NewHandler(servicer ticket.Servicer) *Handler {
+func NewHandler(servicer ticket.Servicer, build BuildInfo) *Handler {
 	var _ api.ServerInterface = &Handler{}
 	e := echo.New()
 	e.HideBanner = true
@@ -38,6 +48,7 @@ func NewHandler(servicer ticket.Servicer) *Handler {
 	return &Handler{
 		e:        e,
 		servicer: servicer,
+		build:    build,
 	}
 }
 
@@ -207,7 +218,16 @@ func (h *Handler) Start() error {
 
 	api.RegisterHandlers(h.e, h)
 
+	// /version sits outside the OpenAPI contract so it has no spec entry; the
+	// validator middleware's Skipper covers it (see
+	// enableOpenApiValidatorMiddleware).
+	h.e.GET("/version", h.getVersion)
+
 	return h.e.Start(fmt.Sprintf(":%d", port))
+}
+
+func (h *Handler) getVersion(ctx echo.Context) error {
+	return ctx.JSON(http.StatusOK, h.build)
 }
 
 func (h *Handler) Stop(ctx context.Context) error {
@@ -267,7 +287,8 @@ func (h *Handler) enableOpenApiValidatorMiddleware() error {
 	}
 	h.e.Use(middleware.OapiRequestValidatorWithOptions(swagger, &middleware.Options{
 		Skipper: func(e echo.Context) bool {
-			return e.Request().RequestURI == "/metrics"
+			uri := e.Request().RequestURI
+			return uri == "/metrics" || uri == "/version"
 		},
 	}))
 

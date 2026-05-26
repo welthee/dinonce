@@ -1,0 +1,20 @@
+# Ephemeral Postgres used by the integration tests in
+# internal/ticket/psql/psql_servicer_test.go. The port is hard-coded to 5433
+# to match the host/port constants in the test file.
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: dinonce-test-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 1s
+      timeout: 2s
+      retries: 30
+    tmpfs:
+      - /var/lib/postgresql/data

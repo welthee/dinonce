@@ -4,9 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/matelang/dinonce/v3/internal/ticket"
-	"github.com/matelang/dinonce/v3/internal/ticket/psql"
 	"os"
+	"path/filepath"
+	"runtime"
 	"sync"
 	"testing"
 
@@ -16,7 +16,10 @@ import (
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+
 	api "github.com/matelang/dinonce/v3/internal/api/generated"
+	"github.com/matelang/dinonce/v3/internal/ticket"
+	"github.com/matelang/dinonce/v3/internal/ticket/psql"
 )
 
 const (
@@ -50,7 +53,12 @@ func init() {
 		log.Fatal().Err(err).Msg("can not get db instance")
 	}
 
-	m, err := migrate.NewWithDatabaseInstance("file://../../scripts/psql/migrations", "postgres", driver)
+	// migrate's file:// driver parses the URL with net/url, which mis-handles
+	// relative paths (the leading ".." becomes the "host"). Anchor the path
+	// to this source file's location and pass an absolute file:// URL.
+	_, thisFile, _, _ := runtime.Caller(0)
+	migrationsDir := filepath.Join(filepath.Dir(thisFile), "..", "..", "..", "scripts", "psql", "migrations")
+	m, err := migrate.NewWithDatabaseInstance("file://"+migrationsDir, "postgres", driver)
 	if err != nil {
 		log.Fatal().Err(err).Msg("can not migrate database schema")
 	}
