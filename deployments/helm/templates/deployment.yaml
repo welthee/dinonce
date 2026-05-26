@@ -35,16 +35,21 @@ spec:
             - name: api
               containerPort: 5010
               protocol: TCP
+            - name: health
+              containerPort: 5001
+              protocol: TCP
           livenessProbe:
             httpGet:
-              path: /health
-              port: 5001
+              path: /livez
+              port: health
             initialDelaySeconds: 5
+            periodSeconds: 10
           readinessProbe:
             httpGet:
-              path: /health
-              port: 5001
+              path: /readyz
+              port: health
             initialDelaySeconds: 5
+            periodSeconds: 5
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           volumeMounts:

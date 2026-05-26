@@ -7,3 +7,8 @@ dist/
 .terraform/
 .terraform.lock.hcl
 terraform.tfstate**
+
+# Claude Code session-local state
+.claude/
+coverage.out
+
