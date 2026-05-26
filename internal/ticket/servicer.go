@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	api "github.com/welthee/dinonce/v2/internal/api/generated"
+	api "github.com/matelang/dinonce/v3/internal/api/generated"
 )
 
 var (

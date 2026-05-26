@@ -4,19 +4,23 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/welthee/dinonce/v2/internal/ticket"
-	"github.com/welthee/dinonce/v2/internal/ticket/psql"
 	"os"
+	"path/filepath"
+	"runtime"
 	"sync"
 	"testing"
 
 	"github.com/golang-migrate/migrate/v4"
-	"github.com/golang-migrate/migrate/v4/database/postgres"
+	pgxmigrate "github.com/golang-migrate/migrate/v4/database/pgx/v5"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/google/uuid"
+	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	api "github.com/welthee/dinonce/v2/internal/api/generated"
+
+	api "github.com/matelang/dinonce/v3/internal/api/generated"
+	"github.com/matelang/dinonce/v3/internal/ticket"
+	"github.com/matelang/dinonce/v3/internal/ticket/psql"
 )
 
 const (
@@ -40,17 +44,22 @@ func init() {
 		"password=%s dbname=%s sslmode=disable",
 		host, port, user, password, dbname)
 
-	db, err := sql.Open("postgres", psqlInfo)
+	db, err := sql.Open("pgx", psqlInfo)
 	if err != nil {
 		log.Fatal().Err(err).Msg("can not open db connection")
 	}
 
-	driver, err := postgres.WithInstance(db, &postgres.Config{})
+	driver, err := pgxmigrate.WithInstance(db, &pgxmigrate.Config{})
 	if err != nil {
 		log.Fatal().Err(err).Msg("can not get db instance")
 	}
 
-	m, err := migrate.NewWithDatabaseInstance("file://../../scripts/psql/migrations", "postgres", driver)
+	// migrate's file:// driver parses the URL with net/url, which mis-handles
+	// relative paths (the leading ".." becomes the "host"). Anchor the path
+	// to this source file's location and pass an absolute file:// URL.
+	_, thisFile, _, _ := runtime.Caller(0)
+	migrationsDir := filepath.Join(filepath.Dir(thisFile), "..", "..", "..", "scripts", "psql", "migrations")
+	m, err := migrate.NewWithDatabaseInstance("file://"+migrationsDir, "postgres", driver)
 	if err != nil {
 		log.Fatal().Err(err).Msg("can not migrate database schema")
 	}

@@ -5,20 +5,24 @@ import (
 	"database/sql"
 	"errors"
 	"math"
-	"math/rand"
+	"math/rand/v2"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/lib/pq"
-	_ "github.com/lib/pq"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/rs/zerolog/log"
-	api "github.com/welthee/dinonce/v2/internal/api/generated"
-	"github.com/welthee/dinonce/v2/internal/ticket"
+
+	api "github.com/matelang/dinonce/v3/internal/api/generated"
+	"github.com/matelang/dinonce/v3/internal/ticket"
 )
 
-// Optimistic lock retry constants
+// Optimistic lock retry constants. The retry budget is sized so single-call
+// success rate stays acceptable under the kind of concurrency we see in the
+// integration tests (~64 contending goroutines on the same lineage row).
+// Callers that exhaust the budget still get a 409 from the API and are
+// expected to retry on their side.
 const (
-	optimisticLockMaxRetryAttempts  = 5
+	optimisticLockMaxRetryAttempts  = 20
 	optimisticLockJitterSleepFactor = 2
 	optimisticLockSleepBase         = 10 * time.Millisecond
 	optimisticLockSleepMax          = 1 * time.Second
@@ -84,8 +88,9 @@ func (p *Servicer) CreateLineage(ctx context.Context, request *api.LineageCreati
 	rows, err := p.db.QueryContext(ctx, queryStringInsertLineage,
 		aUuid.String(), request.ExtId, request.StartLeasingFrom, request.MaxLeasedNonceCount)
 	if err != nil {
-		if pqErr, ok := err.(*pq.Error); ok {
-			switch pqErr.Constraint {
+		var pqErr *pgconn.PgError
+		if errors.As(err, &pqErr) {
+			switch pqErr.ConstraintName {
 			case sqlErrConstraintLineagesExtIdx:
 				return nil, ticket.ErrInvalidRequest
 			default:
@@ -158,31 +163,45 @@ func (p *Servicer) GetLineage(ctx context.Context, extId string) (*api.LineageGe
 }
 
 func (p *Servicer) LeaseTicket(ctx context.Context, lineageId string, request *api.TicketLeaseRequest) (*api.TicketLeaseResponse, error) {
+	start := time.Now()
+	outcome := "ok"
+	defer func() {
+		operationLatencySeconds.WithLabelValues("lease", outcome).Observe(time.Since(start).Seconds())
+	}()
+
 	var err error
 	shouldRetry := true
 	var nonces []int64
 
 	for attempt := 1; shouldRetry && attempt <= optimisticLockMaxRetryAttempts; attempt++ {
 		nonces, shouldRetry, err = p.tryLeaseTicket(ctx, lineageId, request)
-		if err != nil {
-			if shouldRetry {
-				log.Ctx(ctx).Info().
-					Str("lineageId", lineageId).
-					Strs("extId", request.ExtIds).
-					Msg("retrying to lease ticket")
-
-				jitterSleep(attempt, optimisticLockSleepBase, optimisticLockSleepMax)
-			} else {
-				return nil, err
-			}
+		if err == nil {
+			break
 		}
+		if !shouldRetry {
+			outcome = "error"
+			return nil, err
+		}
+		optimisticLockRetries.WithLabelValues("lease").Inc()
+		log.Ctx(ctx).Info().
+			Str("lineageId", lineageId).
+			Strs("extId", request.ExtIds).
+			Int("attempt", attempt).
+			Msg("retrying to lease ticket")
+
+		jitterSleep(attempt, optimisticLockSleepBase, optimisticLockSleepMax)
+	}
+	if err != nil {
+		outcome = "giveup"
+		optimisticLockGiveUps.WithLabelValues("lease").Inc()
+		return nil, err
 	}
 
 	var leases []api.TicketLease
 	for i, n := range nonces {
 		l := api.TicketLease{
 			LineageId: lineageId,
-			Nonce:     int(n), //TODO - check correct cast
+			Nonce:     int(n), // TODO - check correct cast
 			ExtId:     request.ExtIds[i],
 			State:     api.TicketLeaseStateLeased,
 		}
@@ -209,9 +228,10 @@ func (p *Servicer) tryLeaseTicket(ctx context.Context, lineageId string, request
 		return nil, false, err
 	}
 
-	rows, err := p.db.QueryContext(ctx, queryStringCreateTicket, lineageId, version, pq.Array(request.ExtIds))
+	rows, err := p.db.QueryContext(ctx, queryStringCreateTicket, lineageId, version, stringArray(request.ExtIds))
 	if err != nil {
-		if pqErr, ok := err.(*pq.Error); ok {
+		var pqErr *pgconn.PgError
+		if errors.As(err, &pqErr) {
 			switch pqErr.Code {
 			// 22P02 INVALID TEXT REPRESENTATION
 			case "22P02":
@@ -268,7 +288,8 @@ func (p *Servicer) GetTicket(ctx context.Context, lineageId string, ticketExtId 
 	row := p.db.QueryRowContext(ctx, queryStringSelectTicket, lineageId, ticketExtId)
 
 	if err := row.Err(); err != nil {
-		if pqErr, ok := err.(*pq.Error); ok {
+		var pqErr *pgconn.PgError
+		if errors.As(err, &pqErr) {
 			switch pqErr.Code {
 			// 22P02 INVALID TEXT REPRESENTATION
 			case "22P02":
@@ -307,26 +328,37 @@ func (p *Servicer) GetTicket(ctx context.Context, lineageId string, ticketExtId 
 }
 
 func (p *Servicer) ReleaseTicket(ctx context.Context, lineageId string, ticketExtId string) error {
+	start := time.Now()
+	outcome := "ok"
+	defer func() {
+		operationLatencySeconds.WithLabelValues("release", outcome).Observe(time.Since(start).Seconds())
+	}()
+
 	var err error
 	shouldRetry := true
 
 	for attempt := 1; shouldRetry && attempt <= optimisticLockMaxRetryAttempts; attempt++ {
 		shouldRetry, err = p.tryReleaseTicket(ctx, lineageId, ticketExtId)
-		if err != nil {
-			if shouldRetry {
-				log.Ctx(ctx).Info().
-					Str("lineageId", lineageId).
-					Str("extId", ticketExtId).
-					Msg("retrying to release ticket")
-
-				jitterSleep(attempt, optimisticLockSleepBase, optimisticLockSleepMax)
-			} else {
-				return err
-			}
+		if err == nil {
+			return nil
 		}
+		if !shouldRetry {
+			outcome = "error"
+			return err
+		}
+		optimisticLockRetries.WithLabelValues("release").Inc()
+		log.Ctx(ctx).Info().
+			Str("lineageId", lineageId).
+			Str("extId", ticketExtId).
+			Int("attempt", attempt).
+			Msg("retrying to release ticket")
+
+		jitterSleep(attempt, optimisticLockSleepBase, optimisticLockSleepMax)
 	}
 
-	return nil
+	outcome = "giveup"
+	optimisticLockGiveUps.WithLabelValues("release").Inc()
+	return err
 }
 
 func (p *Servicer) GetTickets(ctx context.Context, lineageId string, ticketExtIds []string) (*api.TicketLeaseResponse, error) {
@@ -334,11 +366,12 @@ func (p *Servicer) GetTickets(ctx context.Context, lineageId string, ticketExtId
 	var stateStr string
 	var extId string
 
-	rows, err := p.db.QueryContext(ctx, queryStringSelectTickets, lineageId, pq.Array(ticketExtIds))
+	rows, err := p.db.QueryContext(ctx, queryStringSelectTickets, lineageId, stringArray(ticketExtIds))
 	defer rowCloser(rows)
 
 	if err != nil {
-		if pqErr, ok := err.(*pq.Error); ok {
+		var pqErr *pgconn.PgError
+		if errors.As(err, &pqErr) {
 			switch pqErr.Code {
 			// 22P02 INVALID TEXT REPRESENTATION
 			case "22P02":
@@ -388,7 +421,8 @@ func (p *Servicer) tryReleaseTicket(ctx context.Context, lineageId string, ticke
 
 	rows, err := p.db.QueryContext(ctx, queryStringReleaseTicket, lineageId, version, ticketExtId)
 	if err != nil {
-		if pqErr, ok := err.(*pq.Error); ok {
+		var pqErr *pgconn.PgError
+		if errors.As(err, &pqErr) {
 			switch pqErr.Code {
 			// 22P02 INVALID TEXT REPRESENTATION
 			case "22P02":
@@ -433,26 +467,37 @@ func (p *Servicer) tryReleaseTicket(ctx context.Context, lineageId string, ticke
 }
 
 func (p *Servicer) CloseTicket(ctx context.Context, lineageId string, ticketExtId string) error {
+	start := time.Now()
+	outcome := "ok"
+	defer func() {
+		operationLatencySeconds.WithLabelValues("close", outcome).Observe(time.Since(start).Seconds())
+	}()
+
 	var err error
 	shouldRetry := true
 
 	for attempt := 1; shouldRetry && attempt <= optimisticLockMaxRetryAttempts; attempt++ {
 		shouldRetry, err = p.tryCloseTicket(ctx, lineageId, ticketExtId)
-		if err != nil {
-			if shouldRetry {
-				log.Ctx(ctx).Info().
-					Str("lineageId", lineageId).
-					Str("extId", ticketExtId).
-					Msg("retrying to close ticket")
-
-				jitterSleep(attempt, optimisticLockSleepBase, optimisticLockSleepMax)
-			} else {
-				return err
-			}
+		if err == nil {
+			return nil
 		}
+		if !shouldRetry {
+			outcome = "error"
+			return err
+		}
+		optimisticLockRetries.WithLabelValues("close").Inc()
+		log.Ctx(ctx).Info().
+			Str("lineageId", lineageId).
+			Str("extId", ticketExtId).
+			Int("attempt", attempt).
+			Msg("retrying to close ticket")
+
+		jitterSleep(attempt, optimisticLockSleepBase, optimisticLockSleepMax)
 	}
 
-	return nil
+	outcome = "giveup"
+	optimisticLockGiveUps.WithLabelValues("close").Inc()
+	return err
 }
 
 func (p *Servicer) tryCloseTicket(ctx context.Context, lineageId string, ticketExtId string) (bool, error) {
@@ -463,7 +508,8 @@ func (p *Servicer) tryCloseTicket(ctx context.Context, lineageId string, ticketE
 
 	_, err = p.db.ExecContext(ctx, queryStringCloseTicket, lineageId, version, ticketExtId)
 	if err != nil {
-		if pqErr, ok := err.(*pq.Error); ok {
+		var pqErr *pgconn.PgError
+		if errors.As(err, &pqErr) {
 			switch pqErr.Code {
 			// 22P02 INVALID TEXT REPRESENTATION
 			case "22P02":
@@ -513,7 +559,8 @@ func (p *Servicer) tryCloseTicket(ctx context.Context, lineageId string, ticketE
 func (p *Servicer) getLineageVersion(ctx context.Context, lineageId string) (int64, error) {
 	rows, err := p.db.QueryContext(ctx, queryStringSelectLineageVersion, lineageId)
 	if err != nil {
-		if pqErr, ok := err.(*pq.Error); ok {
+		var pqErr *pgconn.PgError
+		if errors.As(err, &pqErr) {
 			switch pqErr.Code {
 			// 22P02 INVALID TEXT REPRESENTATION
 			case "22P02":
@@ -522,11 +569,11 @@ func (p *Servicer) getLineageVersion(ctx context.Context, lineageId string) (int
 		}
 		return 0, err
 	}
+	defer rowClose(ctx, rows)
 
 	if !rows.Next() {
 		return 0, ticket.ErrNoSuchLineage
 	}
-	defer rowClose(ctx, rows)
 
 	var v int64
 	if err := rows.Scan(&v); err != nil {
@@ -549,15 +596,15 @@ func getNonceFromRow(rows *sql.Rows) (*int, error) {
 }
 
 func getNoncesFromRow(rows *sql.Rows) ([]int64, error) {
-	var nonces []int64
 	if !rows.Next() {
 		return nil, errors.New("expected nonce in result set")
 	}
-	if err := rows.Scan(pq.Array(&nonces)); err != nil {
+	var nonces int64Array
+	if err := rows.Scan(&nonces); err != nil {
 		return nil, err
 	}
 
-	return nonces, nil
+	return []int64(nonces), nil
 }
 
 func rowClose(ctx context.Context, rows *sql.Rows) {
