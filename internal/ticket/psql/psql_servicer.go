@@ -163,6 +163,12 @@ func (p *Servicer) GetLineage(ctx context.Context, extId string) (*api.LineageGe
 }
 
 func (p *Servicer) LeaseTicket(ctx context.Context, lineageId string, request *api.TicketLeaseRequest) (*api.TicketLeaseResponse, error) {
+	start := time.Now()
+	outcome := "ok"
+	defer func() {
+		operationLatencySeconds.WithLabelValues("lease", outcome).Observe(time.Since(start).Seconds())
+	}()
+
 	var err error
 	shouldRetry := true
 	var nonces []int64
@@ -173,8 +179,10 @@ func (p *Servicer) LeaseTicket(ctx context.Context, lineageId string, request *a
 			break
 		}
 		if !shouldRetry {
+			outcome = "error"
 			return nil, err
 		}
+		optimisticLockRetries.WithLabelValues("lease").Inc()
 		log.Ctx(ctx).Info().
 			Str("lineageId", lineageId).
 			Strs("extId", request.ExtIds).
@@ -184,6 +192,8 @@ func (p *Servicer) LeaseTicket(ctx context.Context, lineageId string, request *a
 		jitterSleep(attempt, optimisticLockSleepBase, optimisticLockSleepMax)
 	}
 	if err != nil {
+		outcome = "giveup"
+		optimisticLockGiveUps.WithLabelValues("lease").Inc()
 		return nil, err
 	}
 
@@ -318,6 +328,12 @@ func (p *Servicer) GetTicket(ctx context.Context, lineageId string, ticketExtId 
 }
 
 func (p *Servicer) ReleaseTicket(ctx context.Context, lineageId string, ticketExtId string) error {
+	start := time.Now()
+	outcome := "ok"
+	defer func() {
+		operationLatencySeconds.WithLabelValues("release", outcome).Observe(time.Since(start).Seconds())
+	}()
+
 	var err error
 	shouldRetry := true
 
@@ -327,8 +343,10 @@ func (p *Servicer) ReleaseTicket(ctx context.Context, lineageId string, ticketEx
 			return nil
 		}
 		if !shouldRetry {
+			outcome = "error"
 			return err
 		}
+		optimisticLockRetries.WithLabelValues("release").Inc()
 		log.Ctx(ctx).Info().
 			Str("lineageId", lineageId).
 			Str("extId", ticketExtId).
@@ -338,6 +356,8 @@ func (p *Servicer) ReleaseTicket(ctx context.Context, lineageId string, ticketEx
 		jitterSleep(attempt, optimisticLockSleepBase, optimisticLockSleepMax)
 	}
 
+	outcome = "giveup"
+	optimisticLockGiveUps.WithLabelValues("release").Inc()
 	return err
 }
 
@@ -447,6 +467,12 @@ func (p *Servicer) tryReleaseTicket(ctx context.Context, lineageId string, ticke
 }
 
 func (p *Servicer) CloseTicket(ctx context.Context, lineageId string, ticketExtId string) error {
+	start := time.Now()
+	outcome := "ok"
+	defer func() {
+		operationLatencySeconds.WithLabelValues("close", outcome).Observe(time.Since(start).Seconds())
+	}()
+
 	var err error
 	shouldRetry := true
 
@@ -456,8 +482,10 @@ func (p *Servicer) CloseTicket(ctx context.Context, lineageId string, ticketExtI
 			return nil
 		}
 		if !shouldRetry {
+			outcome = "error"
 			return err
 		}
+		optimisticLockRetries.WithLabelValues("close").Inc()
 		log.Ctx(ctx).Info().
 			Str("lineageId", lineageId).
 			Str("extId", ticketExtId).
@@ -467,6 +495,8 @@ func (p *Servicer) CloseTicket(ctx context.Context, lineageId string, ticketExtI
 		jitterSleep(attempt, optimisticLockSleepBase, optimisticLockSleepMax)
 	}
 
+	outcome = "giveup"
+	optimisticLockGiveUps.WithLabelValues("close").Inc()
 	return err
 }
 

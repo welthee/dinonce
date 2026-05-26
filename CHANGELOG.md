@@ -26,8 +26,13 @@ Conventional Commits.
 ### Added
 - `/livez` and `/readyz` endpoints (process liveness and DB readiness).
 - `/version` endpoint and `-version` CLI flag returning embedded build metadata.
-- Optional OpenTelemetry tracing (config-gated).
+- Custom Prometheus metrics covering optimistic-lock retries
+  (`dinonce_ticket_optimistic_lock_retries_total`), retry-budget exhaustion
+  (`dinonce_ticket_optimistic_lock_giveups_total`), and end-to-end ticket
+  operation latency (`dinonce_ticket_operation_latency_seconds`).
 - Connection-pool tuning knobs in `backendConfig`.
+- `release-please-config.json` + manifest driving automated semver
+  release PRs from Conventional Commits.
 - Conventional unit tests for the HTTP handler layer.
 - `docker-compose.test.yaml` for one-command integration-test bring-up.
 - Architecture Decision Records under `docs/adr/`, including ADR-0001
